@@ -27,3 +27,4 @@ yarn-error.log*
 # System & OS Files
 .DS_Store
 Thumbs.db
+.agent-memory.md

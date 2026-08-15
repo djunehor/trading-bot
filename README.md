@@ -134,6 +134,7 @@ These dip-buying strategies are **disabled** because they conflict with the tigh
 - **Deterministic position sizing** — 5% of cash per trade, no AI guesswork.
 - **Caching** — Redis with in-memory fallback to protect API quotas.
 - **SQLite persistence** — orders, logs, risk state, and equity snapshots survive restarts.
+- **Optional basic auth** — when `AUTH_USERNAME`/`AUTH_PASSWORD` are set, the UI and API require HTTP Basic auth.
 - **Dashboard** — live metrics, open positions, closed-position performance, streamgraph, order history, and bot controls.
 
 ---
@@ -195,6 +196,10 @@ NEWSAPI_KEY=your_newsapi_key
 
 # Optional Redis Server URL
 REDIS_URL=redis://127.0.0.1:6379
+
+# Optional basic auth — if both set, the UI and API require these credentials
+AUTH_USERNAME=
+AUTH_PASSWORD=
 
 # Server Port
 PORT=3000
