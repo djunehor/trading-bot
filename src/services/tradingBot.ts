@@ -1,4 +1,4 @@
-import { getCurrentPrice, getPositions, createOrder, getAccount, getOrders, cancelOrder, getTopMovers, getTopCryptoMovers, getTodayRealizedPl } from './alpacaService.js';
+import { getLatestBar, getCurrentPrice, getPositions, createOrder, getAccount, getOrders, cancelOrder, getTopMovers, getTopCryptoMovers, getTodayRealizedPl } from './alpacaService.js';
 import { analyzeNewsSentiment } from './newsService.js';
 import { getAccountMode } from '../config/alpaca.js';
 import { saveBotLogDb, saveBotStateDb, getBotStateDb, saveBotRiskState, loadBotRiskState, deleteBotRiskState } from '../db/database.js';
@@ -392,8 +392,9 @@ export class BotEngine {
 
       for (const pos of targetPositions) {
         // Use Alpaca's real-time position price for BOTH asset classes.
-        // Bar close (5-min) lags during fast moves and misses stop-loss triggers.
-        const currentPrice = Number(pos.current_price) || 0;
+        // Real-time position price first; fall back to bar close when current_price
+        // is unavailable (e.g. freshly-opened position, or test mocks).
+        const currentPrice = Number(pos.current_price) || ((await getLatestBar(pos.symbol))?.c || 0);
         if (!currentPrice) continue;
 
         const qty = Math.abs(parseFloat(pos.qty));

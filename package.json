@@ -8,8 +8,8 @@
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "test": "NODE_ENV=test tsx --test tests/alpacaService.test.ts tests/alpacaServiceMock.test.ts tests/newsService.test.ts tests/tradingBotMock.test.ts tests/ui.test.ts",
-    "test:cov": "npx -y c8 --check-coverage --lines 70 --statements 70 --functions 70 npm test",
+    "test": "NODE_ENV=test tsx --test tests/*.test.ts",
+    "test:cov": "npx -y c8 --check-coverage --lines 80 --statements 80 --functions 80 npm test",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

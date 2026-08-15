@@ -142,13 +142,13 @@ export async function createOrder(params: CreateOrderParams): Promise<AlpacaOrde
   return order;
 }
 
-export async function cancelOrder(orderId: string): Promise<{ success: boolean }> {
+export async function cancelOrder(orderId: string): Promise<{ id: string; success: boolean }> {
   log.info(`Canceling order ID: ${orderId}...`);
   await alpacaFetch<void>(`/v2/orders/${orderId}`, { method: 'DELETE' });
   log.info(`Order ${orderId} canceled.`);
 
   await invalidateAllCaches();
-  return { success: true };
+  return { id: orderId, success: true };
 }
 
 export async function closePosition(symbol: string): Promise<AlpacaOrder> {

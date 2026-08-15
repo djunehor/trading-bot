@@ -73,3 +73,79 @@ test('Cache Service Unit Test - Fallback operations', async () => {
   await delCache('test_key');
   await clearAllCache();
 });
+
+test('News Sentiment - fetchNewsForSymbols returns news map', async () => {
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    return new Response(JSON.stringify({
+      news: [
+        { id: 3, headline: 'Amazon stock rises on cloud growth', summary: 'Bullish', symbols: ['AMZN'] }
+      ]
+    }), { status: 200 });
+  };
+  await clearAllCache();
+  const { fetchNewsForSymbols } = await import('../src/services/newsService.js');
+  const map = await fetchNewsForSymbols(['AMZN']);
+  assert.ok(map.AMZN);
+  assert.ok(Array.isArray(map.AMZN));
+});
+
+test('News Sentiment - analyzeNewsSentiment Gemini path', async () => {
+  process.env.GEMINI_API_KEY = 'test_gemini_key';
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('generativelanguage')) {
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: JSON.stringify({ score: 0.6, sentiment: 'BULLISH', topHeadline: 'Great earnings' }) }] } }]
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify({
+      news: [{ id: 4, headline: 'Meta beats revenue on AI ad growth', summary: 'Bullish', symbols: ['META'] }]
+    }), { status: 200 });
+  };
+  await clearAllCache();
+  const sentiments = await analyzeNewsSentiment(['META'], true);
+  assert.equal(sentiments.length, 1);
+  delete process.env.GEMINI_API_KEY;
+});
+
+test('News Sentiment - fetchNewsForSymbols Webz path', async () => {
+  const oldNodeEnv = process.env.NODE_ENV;
+  delete process.env.NODE_ENV;
+  process.env.WEBZ_TOKEN = 'test_webz';
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('api.webz.io')) {
+      return new Response(JSON.stringify({
+        posts: [{ uuid: 'w1', title: 'AAPL surges on strong iPhone sales', summary: 'AAPL beats expectations', url: 'http://x', published: '2026-01-01', entities: { organizations: [{ tickers: [{ ticker: 'AAPL' }] }] } }]
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 200 });
+  };
+  await clearAllCache();
+  const { fetchNewsForSymbols } = await import('../src/services/newsService.js');
+  const map = await fetchNewsForSymbols(['AAPL']);
+  assert.ok(map.AAPL.length > 0);
+  delete process.env.WEBZ_TOKEN;
+  process.env.NODE_ENV = oldNodeEnv;
+});
+
+test('News Sentiment - fetchNewsForSymbols NewsAPI path', async () => {
+  const oldNodeEnv = process.env.NODE_ENV;
+  delete process.env.NODE_ENV;
+  process.env.NEWSAPI_KEY = 'test_newsapi';
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('newsapi.org')) {
+      return new Response(JSON.stringify({
+        articles: [{ url: 'http://n', title: 'TSLA drops after earnings miss', description: 'TSLA shares fall', publishedAt: '2026-01-01' }]
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 200 });
+  };
+  await clearAllCache();
+  const { fetchNewsForSymbols } = await import('../src/services/newsService.js');
+  const map = await fetchNewsForSymbols(['TSLA']);
+  assert.ok(map.TSLA.length > 0);
+  delete process.env.NEWSAPI_KEY;
+  process.env.NODE_ENV = oldNodeEnv;
+});

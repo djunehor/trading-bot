@@ -15,7 +15,8 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const dbPath = path.join(dataDir, 'trading.db');
+// Tests use an isolated in-memory DB so they never touch dev data.
+const dbPath = process.env.NODE_ENV === 'test' ? ':memory:' : path.join(dataDir, 'trading.db');
 const db = new Database(dbPath);
 
 /* Enable WAL (Write-Ahead Logging) mode for concurrent read/write efficiency */

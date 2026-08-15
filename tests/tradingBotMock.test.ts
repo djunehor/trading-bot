@@ -6,8 +6,28 @@ process.env.NODE_ENV = 'test';
 import { startBot, stopBot, getBotStatus, evaluateTradingStrategy, isExtendedHours } from '../src/services/tradingBot.js';
 import { clearAllCache } from '../src/services/cacheService.js';
 
+// Mock Date to a weekday during market hours so risk management runs exit checks
+// regardless of the actual day the tests run on (e.g. weekends).
+let OrigDate: DateConstructor;
+function installMarketDateMock(): void {
+  OrigDate = globalThis.Date;
+  (globalThis as any).Date = class extends OrigDate {
+    getDay() { return 2; }        // Tuesday
+    getHours() { return 11; }     // 11 AM ET
+    getMinutes() { return 30; }
+  };
+}
+function restoreDate(): void {
+  if (OrigDate) globalThis.Date = OrigDate;
+}
+
 test.beforeEach(async () => {
   await clearAllCache();
+  installMarketDateMock();
+});
+
+test.afterEach(() => {
+  restoreDate();
 });
 
 test('Trading Bot Strategy Evaluation - Momentum & edge cases', () => {
@@ -88,18 +108,11 @@ test('Trading Bot Mock - Bearish news sentiment triggers position sell & pending
     return new Response(JSON.stringify({ id: 'ord_sell_1', status: 'accepted' }), { status: 200 });
   };
 
-  // Mock time to market hours (11 AM ET) so news strategy doesn't skip
-  const OrigDate = globalThis.Date;
-  (globalThis as any).Date = class extends OrigDate {
-    getHours() { return 11; }
-    getMinutes() { return 30; }
-  };
+  // (market-hours Date mock handled by beforeEach)
 
   startBot({ strategy: 'news_sentiment', intervalSeconds: 15, watchlist: ['TSLA'], extendedHours: false });
   await new Promise(r => setTimeout(r, 200));
   stopBot();
-
-  globalThis.Date = OrigDate;
 
   const status = getBotStatus();
   assert.ok(status.logs.some(l => l.message.includes('News bearish') || l.message.includes('canceling pending buy')));

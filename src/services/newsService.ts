@@ -16,8 +16,8 @@ const TOP_STOCKS = [
   'V', 'UNH', 'BA', 'COST'
 ];
 const CACHE_TTL_SECONDS = 3600; // 1 hour TTL to protect API quotas
-const WEBZ_TOKEN = process.env.WEBZ_TOKEN || '';
-const NEWSAPI_KEY = process.env.NEWSAPI_KEY || '';
+
+// Read at call time (not import time) so tests can set these before calling.
 
 export function isMediaReleasePost(text: string): boolean {
   if (!text) return false;
@@ -111,7 +111,7 @@ function tickerInText(text: string, ticker: string): boolean {
 
 async function fetchFromWebz(symbols: string[]): Promise<Record<string, NewsArticle[]>> {
   const query = `language:"english" AND (${symbols.join(' OR ')})`;
-  const url = `https://api.webz.io/api/news?token=${WEBZ_TOKEN}&q=${encodeURIComponent(query)}&sort=crawled&format=json&size=30&includeSyndicated=false`;
+  const url = `https://api.webz.io/api/news?token=${process.env.WEBZ_TOKEN || ''}&q=${encodeURIComponent(query)}&sort=crawled&format=json&size=30&includeSyndicated=false`;
 
   const resultBySymbol: Record<string, NewsArticle[]> = {};
   symbols.forEach(s => { resultBySymbol[s] = []; });
@@ -164,7 +164,7 @@ async function fetchFromNewsApi(symbols: string[]): Promise<Record<string, NewsA
   symbols.forEach(s => { resultBySymbol[s] = []; });
 
   const promises = symbols.map(async (sym) => {
-    const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(sym)}&apiKey=${NEWSAPI_KEY}&pageSize=10&sortBy=publishedAt&language=en`;
+    const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(sym)}&apiKey=${process.env.NEWSAPI_KEY || ''}&pageSize=10&sortBy=publishedAt&language=en`;
     const res = await fetch(url);
     if (!res.ok) return;
     const data = await res.json() as { articles?: NewsApiArticle[] };
@@ -243,7 +243,7 @@ export async function fetchNewsForSymbols(symbols: string[] = TOP_STOCKS): Promi
     return result;
   }
 
-  if (WEBZ_TOKEN) {
+  if (process.env.WEBZ_TOKEN) {
     try {
       result = await fetchFromWebz(symbols);
       log.info(`Webz.io → ${Object.values(result).reduce((s,a)=>s+a.length,0)} articles across ${Object.values(result).filter(a=>a.length>0).length} symbols`);
@@ -253,7 +253,7 @@ export async function fetchNewsForSymbols(symbols: string[] = TOP_STOCKS): Promi
   }
 
   const hasArticles = Object.values(result).some(a => a.length > 0);
-  if (!hasArticles && NEWSAPI_KEY) {
+  if (!hasArticles && process.env.NEWSAPI_KEY) {
     try {
       result = await fetchFromNewsApi(symbols);
       log.info(`NewsAPI.org → ${Object.values(result).reduce((s,a)=>s+a.length,0)} articles across ${Object.values(result).filter(a=>a.length>0).length} symbols`);

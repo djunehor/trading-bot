@@ -181,3 +181,42 @@ test('HTTP API - Bot lifecycle control (GET status, POST start, POST stop)', asy
   });
   assert.equal(stopRes.status, 200);
 });
+
+test('HTTP API - GET /api/positions/closed returns realized P/L by symbol', async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/api/positions/closed`);
+  assert.equal(res.status, 200);
+  const body = await res.json() as any[];
+  assert.ok(Array.isArray(body));
+});
+
+test('HTTP API - GET /api/market/clock returns market schedule', async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/api/market/clock`);
+  assert.equal(res.status, 200);
+  const body = await res.json() as any;
+  assert.ok(body.marketStatus !== undefined && body.isOpen !== undefined && body.nextEvent !== undefined);
+});
+
+test('HTTP API - GET /api/account/equity-history returns snapshots', async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/api/account/equity-history?limit=5`);
+  assert.equal(res.status, 200);
+  const body = await res.json() as any[];
+  assert.ok(Array.isArray(body));
+});
+
+test('HTTP API - POST /api/account/reset resets baseline', async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/api/account/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  // reset may return 200 or 400 depending on state; assert it returns JSON
+  assert.ok(res.status === 200 || res.status === 400);
+  await res.json();
+});
+
+test('HTTP API - GET /api/bot/status with assetClass filter', async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/api/bot/status?assetClass=us_equity`);
+  assert.equal(res.status, 200);
+  const body = await res.json() as any;
+  assert.ok(body.isRunning !== undefined);
+});

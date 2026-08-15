@@ -93,6 +93,9 @@ function vwap(bars: Bar[]): number {
   return cumulativeV > 0 ? cumulativePV / cumulativeV : 0;
 }
 
+// Exported for unit testing — indicator math is pure.
+export const indicators = { sma, ema, rsi, atr, bollingerBands, vwap };
+
 // ── bar fetching ─────────────────────────────────────────────────────
 
 async function fetchBars(symbol: string): Promise<Bar[]> {

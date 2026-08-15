@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 process.env.NODE_ENV = 'test';
 
-import { getAccount, getPositions, getOrders, createOrder, cancelOrder, closePosition, getLatestBar } from '../src/services/alpacaService.js';
+import { getAccount, getPositions, getOrders, createOrder, cancelOrder, closePosition, getLatestBar, getCurrentPrice, getRealizedPlBySymbol, getTodayRealizedPl, getTopMovers, calculateRealizedPlFromOrders } from '../src/services/alpacaService.js';
 import { clearAllCache } from '../src/services/cacheService.js';
 
 let originalFetch: typeof globalThis.fetch;
@@ -100,4 +100,103 @@ test('Alpaca API Mock - getLatestBar', async () => {
   const bar = await getLatestBar('AAPL');
   assert.ok(bar);
   assert.equal(bar.c, 153.50);
+});
+
+// ── New functions ─────────────────────────────────────────────
+
+test('Alpaca API Mock - getCurrentPrice stock quote midpoint', async () => {
+  globalThis.fetch = async (input: any) => {
+    const url = String(input);
+    if (url.includes('/quotes/latest')) {
+      return new Response(JSON.stringify({ quote: { bp: 100.00, ap: 100.02 } }), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 200 });
+  };
+  const price = await getCurrentPrice('AAPL');
+  assert.ok(Math.abs(price! - 100.01) < 0.001);
+});
+
+test('Alpaca API Mock - getCurrentPrice crypto trade', async () => {
+  globalThis.fetch = async (input: any) => {
+    const url = String(input);
+    if (url.includes('/latest/trades')) {
+      return new Response(JSON.stringify({ trades: { 'BTC/USD': { p: 65000.50 } } }), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 200 });
+  };
+  const price = await getCurrentPrice('BTC/USD');
+  assert.equal(price, 65000.50);
+});
+
+test('Alpaca API Mock - getRealizedPlBySymbol FIFO matching', async () => {
+  globalThis.fetch = async (input: any) => {
+    const url = String(input);
+    if (url.includes('/v2/orders')) {
+      const orders = [
+        { id: 'o1', symbol: 'AAPL', side: 'buy', qty: '10', filled_qty: '10', filled_avg_price: '100', status: 'filled', filled_at: new Date().toISOString() },
+        { id: 'o2', symbol: 'AAPL', side: 'sell', qty: '10', filled_qty: '10', filled_avg_price: '110', status: 'filled', filled_at: new Date().toISOString() },
+      ];
+      return new Response(JSON.stringify(orders), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 200 });
+  };
+  const result = await getRealizedPlBySymbol();
+  assert.equal(result.length, 1);
+  assert.equal(result[0].symbol, 'AAPL');
+  assert.equal(result[0].realizedPl, 100); // 10 * (110 - 100)
+  assert.equal(result[0].closedQty, 10);
+});
+
+test('Alpaca API Mock - getTodayRealizedPl sums today-only fills', async () => {
+  const today = new Date().toISOString();
+  globalThis.fetch = async (input: any) => {
+    const url = String(input);
+    if (url.includes('/v2/orders')) {
+      const orders = [
+        { id: 'o1', symbol: 'NVDA', side: 'buy', qty: '5', filled_qty: '5', filled_avg_price: '50', status: 'filled', filled_at: today },
+        { id: 'o2', symbol: 'NVDA', side: 'sell', qty: '5', filled_qty: '5', filled_avg_price: '60', status: 'filled', filled_at: today },
+      ];
+      return new Response(JSON.stringify(orders), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 200 });
+  };
+  const pl = await getTodayRealizedPl();
+  assert.equal(pl, 50); // 5 * (60 - 50)
+});
+
+test('Alpaca API Mock - getTopMovers uses screener with price filter', async () => {
+  globalThis.fetch = async (input: any) => {
+    const url = String(input);
+    if (url.includes('/screener/stocks/movers')) {
+      return new Response(JSON.stringify({
+        gainers: [{ symbol: 'GOOD', price: 25 }, { symbol: 'CHEAP', price: 3 }, { symbol: 'WARRANT', price: 8 }],
+        losers: [{ symbol: 'BAD', price: 30 }],
+        most_actives: [],
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 200 });
+  };
+  await clearAllCache();
+  const movers = await getTopMovers();
+  assert.ok(movers.includes('GOOD'));
+  assert.ok(movers.includes('BAD'));
+  assert.ok(!movers.includes('CHEAP')); // below $20 floor
+  assert.ok(!movers.includes('WARRANT')); // ends in W
+});
+
+test('Alpaca API Mock - calculateRealizedPlFromOrders total FIFO', async () => {
+  globalThis.fetch = async (input: any) => {
+    const url = String(input);
+    if (url.includes('/v2/orders')) {
+      const orders = [
+        { id: 'o1', symbol: 'AAPL', side: 'buy', qty: '10', filled_qty: '10', filled_avg_price: '100', status: 'filled', filled_at: new Date().toISOString() },
+        { id: 'o2', symbol: 'AAPL', side: 'sell', qty: '6', filled_qty: '6', filled_avg_price: '105', status: 'filled', filled_at: new Date().toISOString() },
+        { id: 'o3', symbol: 'AAPL', side: 'sell', qty: '4', filled_qty: '4', filled_avg_price: '95', status: 'filled', filled_at: new Date().toISOString() },
+      ];
+      return new Response(JSON.stringify(orders), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 200 });
+  };
+  const pl = await calculateRealizedPlFromOrders('us_equity');
+  assert.equal(pl, 10); // 6*(105-100) + 4*(95-100) = 30 - 20 = 10
 });
