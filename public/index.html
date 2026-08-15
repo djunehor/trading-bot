@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Automated Stock Trading</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+</head>
+<body>
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon">📈</div>
+        <div class="brand-text">
+          <h1>Trade Automation</h1>
+          <p class="subtitle">News Sentiment Trading & Account Management</p>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <!-- Manual Refresh Button -->
+        <button id="refreshDashboardBtn" class="btn btn-secondary btn-sm" style="margin-right: 15px;">🔄 Refresh Dashboard</button>
+
+        <!-- Paper / Live Account Switcher -->
+        <div class="mode-switch-container">
+          <span class="mode-label">Account Mode:</span>
+          <div class="toggle-group">
+            <button id="modePaperBtn" class="toggle-btn active-paper">Paper Trading</button>
+            <button id="modeLiveBtn" class="toggle-btn">Live Trading</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Alert / Banner for Live Trading Warning -->
+    <div id="liveWarningBanner" class="warning-banner hidden">
+      ⚠️ <strong>LIVE TRADING MODE ACTIVE:</strong> Orders executed in this mode use REAL MONEY and live capital.
+    </div>
+
+    <!-- Main Grid Dashboard -->
+    <main class="dashboard-grid">
+      <!-- Section 1: Account Overview Cards -->
+      <section class="card overview-card">
+        <h2>Account Overview</h2>
+        <div class="metrics-grid">
+          <div class="metric-box">
+            <span class="metric-label">Equity</span>
+            <span id="metricEquity" class="metric-value">$0.00</span>
+          </div>
+          <div class="metric-box highlight-box">
+            <span class="metric-label">🏆 All-Time P/L</span>
+            <span id="metricAllTimePl" class="metric-value" style="color: #34d399;">+$0.00</span>
+          </div>
+          <div class="metric-box highlight-box">
+            <span class="metric-label">📈 Today's Change</span>
+            <span id="metricDailyChange" class="metric-value" style="color: #34d399;">+$0.00</span>
+          </div>
+          <div class="metric-box">
+            <span class="metric-label">Buying Power</span>
+            <span id="metricBuyingPower" class="metric-value">$0.00</span>
+          </div>
+          <div class="metric-box">
+            <span class="metric-label">Cash</span>
+            <span id="metricCash" class="metric-value">$0.00</span>
+          </div>
+          <div class="metric-box">
+            <span class="metric-label">🪙 Crypto Unrealized P/L</span>
+            <span id="metricCryptoUnrealizedPl" class="metric-value" style="color: #34d399;">+$0.00</span>
+          </div>
+          <div class="metric-box">
+            <span class="metric-label">🪙 Crypto Realized P/L</span>
+            <span id="metricCryptoRealizedPl" class="metric-value" style="color: #34d399;">+$0.00</span>
+          </div>
+          <div class="metric-box today-metric">
+            <span class="metric-label">📈 Today's Unrealized P/L</span>
+            <span id="metricTodayUnrealizedPl" class="metric-value">$0.00</span>
+          </div>
+          <div class="metric-box today-metric">
+            <span class="metric-label">💰 Today's Realized P/L</span>
+            <span id="metricTodayRealizedPl" class="metric-value">$0.00</span>
+          </div>
+          <div class="metric-box">
+            <span class="metric-label">Account Status</span>
+            <span id="metricStatus" class="status-badge status-active">LOADING</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section: Portfolio Allocation -->
+      <section class="card allocation-card full-width-card">
+        <h2>Portfolio Allocation</h2>
+        <div class="metrics-grid">
+          <div class="metric-box">
+            <span class="metric-label">💵 Cash</span>
+            <span id="metricAllocCash" class="metric-value">$0.00 (0%)</span>
+          </div>
+          <div class="metric-box">
+            <span class="metric-label">📈 Stocks</span>
+            <span id="metricAllocStocks" class="metric-value">$0.00 (0%)</span>
+          </div>
+          <div class="metric-box">
+            <span class="metric-label">🪙 Crypto</span>
+            <span id="metricAllocCrypto" class="metric-value">$0.00 (0%)</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section: P/L Streamgraph -->
+      <section class="card full-width-card">
+        <div class="card-header">
+          <h2>📊 Position P/L Stream</h2>
+          <div style="display:flex; align-items:center; gap:16px;">
+            <div id="streamTotalDisplay" style="font-size:13px; font-weight:600; color:#94a3b8;">Total: —</div>
+            <div class="toggle-group" style="gap:0;">
+              <button id="streamModePct" class="toggle-btn active-paper" style="padding:4px 14px; font-size:12px;">%</button>
+              <button id="streamModeUsd" class="toggle-btn" style="padding:4px 14px; font-size:12px;">$</button>
+            </div>
+          </div>
+        </div>
+        <div id="streamChartContainer"></div>
+      </section>
+
+      <!-- Section: Market Clock -->
+      <section class="card full-width-card market-clock-card">
+        <h2>🕐 Market Clock</h2>
+        <div class="market-clock-container">
+          <div class="market-clock-status">
+            <span id="marketStatusBadge" class="status-badge status-pending">LOADING</span>
+            <span id="marketStatusLabel" class="market-status-label">Fetching market schedule...</span>
+          </div>
+          <div class="market-clock-countdown">
+            <span id="marketNextEventLabel" class="countdown-label">Next Event</span>
+            <div class="countdown-timer">
+              <span id="marketCountdownHours" class="countdown-digit">--</span>
+              <span class="countdown-sep">:</span>
+              <span id="marketCountdownMinutes" class="countdown-digit">--</span>
+              <span class="countdown-sep">:</span>
+              <span id="marketCountdownSeconds" class="countdown-digit">--</span>
+            </div>
+            <span id="marketNextEventTime" class="countdown-sub">--</span>
+          </div>
+          <div class="market-schedule-legend">
+            <span class="legend-item legend-regular">🟢 Regular Hours (Mon-Fri 9:30AM-4:00PM ET)</span>
+            <span class="legend-item legend-extended">🟡 Extended Hours (Sun 8PM - Fri 8PM ET)</span>
+            <span class="legend-item legend-closed">🔴 Market Closed (Fri 8PM - Sun 8PM ET)</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2: News Sentiment Monitor -->
+      <section class="card full-width-card">
+        <div class="card-header">
+          <h2>Top Stocks Live News Sentiment</h2>
+          <span class="subtitle">Analyzes headlines to trigger automated trades</span>
+        </div>
+        <div class="table-wrapper-compact">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Sentiment</th>
+                <th>Score (-1 to +1)</th>
+                <th>Articles</th>
+                <th>Latest Headline</th>
+              </tr>
+            </thead>
+            <tbody id="sentimentTableBody">
+              <tr>
+                <td colspan="5" class="text-center text-muted">Analyzing top stock news sentiment...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 3A: Automated Stock Trading Bot -->
+      <section class="card bot-card">
+        <div class="card-header">
+          <div>
+            <h2>📈 Automated Stock Bot</h2>
+            <p class="subtitle">Autonomous AI engine scanning US Equities & executing trades</p>
+          </div>
+          <span id="stockBotStateBadge" class="status-badge status-off">STOPPED</span>
+        </div>
+
+        <div class="button-group" style="margin-bottom: 1rem;">
+          <button type="button" id="startStockBotBtn" class="btn btn-success" style="padding: 0.85rem; font-size: 0.95rem;">▶️ Start Stock Bot</button>
+          <button type="button" id="stopStockBotBtn" class="btn btn-danger" style="padding: 0.85rem; font-size: 0.95rem;" disabled>⏹️ Stop Stock Bot</button>
+        </div>
+
+        <div class="bot-logs-container">
+          <h3>Stock Execution Logs</h3>
+          <div id="stockBotLogsList" class="logs-console">
+            <div class="log-item info">Stock Bot initialized. Click "Start Stock Bot" to initiate autonomous stock trading.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 4: Manual Trade Execution -->
+      <section class="card trade-card">
+        <h2>Manual Order</h2>
+        <form id="manualOrderForm" class="trade-form">
+          <div class="form-group">
+            <label for="orderSymbol">Symbol</label>
+            <input type="text" id="orderSymbol" placeholder="e.g. TSLA, NVDA" required uppercase>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="orderSide">Side</label>
+              <select id="orderSide">
+                <option value="buy">BUY</option>
+                <option value="sell">SELL</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="orderQty">Qty</label>
+              <input type="number" id="orderQty" value="1" min="1" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="orderType">Order Type</label>
+            <select id="orderType">
+              <option value="market">Market Order</option>
+              <option value="limit">Limit Order</option>
+            </select>
+          </div>
+          <div class="form-group hidden" id="limitPriceGroup">
+            <label for="limitPrice">Limit Price ($)</label>
+            <input type="number" id="limitPrice" step="0.01" min="0.01">
+          </div>
+          <button type="submit" id="submitOrderBtn" class="btn btn-primary">Place Order</button>
+        </form>
+      </section>
+
+      <!-- Section 3B: Automated Crypto Trading Bot -->
+      <section class="card bot-card">
+        <div class="card-header">
+          <div>
+            <h2>🪙 Automated Crypto Bot</h2>
+            <p class="subtitle">Autonomous AI engine scanning 24/7 Crypto Pairs & executing trades</p>
+          </div>
+          <span id="cryptoBotStateBadge" class="status-badge status-off">STOPPED</span>
+        </div>
+
+        <div class="button-group" style="margin-bottom: 1rem;">
+          <button type="button" id="startCryptoBotBtn" class="btn btn-success" style="padding: 0.85rem; font-size: 0.95rem;">▶️ Start Crypto Bot</button>
+          <button type="button" id="stopCryptoBotBtn" class="btn btn-danger" style="padding: 0.85rem; font-size: 0.95rem;" disabled>⏹️ Stop Crypto Bot</button>
+        </div>
+
+        <div class="bot-logs-container">
+          <h3>Crypto Execution Logs</h3>
+          <div id="cryptoBotLogsList" class="logs-console">
+            <div class="log-item info">Crypto Bot initialized. Click "Start Crypto Bot" to initiate 24/7 crypto trading.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 5: Open Positions -->
+      <section class="card full-width-card">
+        <h2>Open Positions</h2>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="sortable" data-sort="symbol">Symbol</th>
+                <th class="sortable" data-sort="qty">Qty</th>
+                <th class="sortable" data-sort="avg_entry_price">Avg Entry Price</th>
+                <th class="sortable" data-sort="market_value">Market Value</th>
+                <th class="sortable" data-sort="unrealized_pl">Unrealized P/L</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="positionsTableBody">
+              <tr>
+                <td colspan="6" class="text-center text-muted">No open positions found.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 5B: Closed Positions Performance -->
+      <section class="card full-width-card">
+        <div class="card-header">
+          <h2>📊 Closed Positions Performance</h2>
+          <span class="subtitle">Top 5 winners and losers (realized P/L)</span>
+        </div>
+        <div class="closed-perf-grid">
+          <div>
+            <h3 class="closed-perf-title text-success">🏆 Top Performers</h3>
+            <div class="table-wrapper-compact">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Closed Qty</th>
+                    <th>Realized P/L</th>
+                  </tr>
+                </thead>
+                <tbody id="topPerformersBody">
+                  <tr><td colspan="3" class="text-center text-muted">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h3 class="closed-perf-title text-danger">📉 Worst Performers</h3>
+            <div class="table-wrapper-compact">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Closed Qty</th>
+                    <th>Realized P/L</th>
+                  </tr>
+                </thead>
+                <tbody id="worstPerformersBody">
+                  <tr><td colspan="3" class="text-center text-muted">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 6: Order History -->
+      <section class="card full-width-card">
+        <h2>Recent Orders</h2>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Order ID</th>
+                <th>Symbol</th>
+                <th>Side</th>
+                <th>Qty</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Reason Note</th>
+                <th>Submitted At</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTableBody">
+              <tr>
+                <td colspan="9" class="text-center text-muted">Loading order history...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Action Confirmation Modal -->
+  <div id="confirmModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalTitle">Confirm Action</h3>
+      </div>
+      <div class="modal-body">
+        <p id="modalMessage">Are you sure you want to proceed with this action?</p>
+      </div>
+      <div class="modal-actions">
+        <button id="modalCancelBtn" class="btn btn-secondary btn-sm">Cancel</button>
+        <button id="modalConfirmBtn" class="btn btn-primary btn-sm">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

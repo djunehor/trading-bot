@@ -1,0 +1,34 @@
+{
+  "name": "alpaca-trading-automation",
+  "version": "1.0.0",
+  "description": "Automated Stock Trading Application with Alpaca API, News Sentiment Engine, Paper/Live Account Switch, and Extended Hours Support",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "test": "NODE_ENV=test tsx --test tests/alpacaService.test.ts tests/alpacaServiceMock.test.ts tests/newsService.test.ts tests/tradingBotMock.test.ts tests/ui.test.ts",
+    "test:cov": "npx -y c8 --check-coverage --lines 70 --statements 70 --functions 70 npm test",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@alpacahq/alpaca-trade-api": "^4.0.1",
+    "better-sqlite3": "^13.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ioredis": "^6.0.0",
+    "vader-sentiment": "^1.1.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/ioredis": "^4.28.10",
+    "@types/node": "^22.13.1",
+    "c8": "^10.1.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
