@@ -52,6 +52,34 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const app = express();
+
+// ── Optional Basic Auth ─────────────────────────────────────────
+// When AUTH_USERNAME and AUTH_PASSWORD are both set, all UI/API requests
+// require HTTP Basic auth. If unset, no auth (default behavior).
+app.use((req: Request, res: Response, next) => {
+  // Read at request time so tests can toggle auth on/off.
+  const AUTH_USERNAME = process.env.AUTH_USERNAME || '';
+  const AUTH_PASSWORD = process.env.AUTH_PASSWORD || '';
+  if (!AUTH_USERNAME || !AUTH_PASSWORD) return next();
+
+  const authHeader = req.headers.authorization || '';
+  const [scheme, encoded] = authHeader.split(' ');
+  if (scheme === 'Basic' && encoded) {
+    try {
+      const decoded = Buffer.from(encoded, 'base64').toString('utf-8');
+      const idx = decoded.indexOf(':');
+      const user = idx >= 0 ? decoded.slice(0, idx) : '';
+      const pass = idx >= 0 ? decoded.slice(idx + 1) : '';
+      if (user === AUTH_USERNAME && pass === AUTH_PASSWORD) return next();
+    } catch {
+      // fall through to 401
+    }
+  }
+
+  res.setHeader('WWW-Authenticate', 'Basic realm="trading-bot"');
+  res.status(401).send('Unauthorized');
+});
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));

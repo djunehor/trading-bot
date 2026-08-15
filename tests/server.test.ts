@@ -220,3 +220,25 @@ test('HTTP API - GET /api/bot/status with assetClass filter', async () => {
   const body = await res.json() as any;
   assert.ok(body.isRunning !== undefined);
 });
+
+test('HTTP API - Basic auth rejects when credentials set', async () => {
+  process.env.AUTH_USERNAME = 'admin';
+  process.env.AUTH_PASSWORD = 'secret';
+  try {
+    const noAuth = await fetch(`http://127.0.0.1:${port}/api/mode`);
+    assert.equal(noAuth.status, 401);
+
+    const badAuth = await fetch(`http://127.0.0.1:${port}/api/mode`, {
+      headers: { 'Authorization': 'Basic ' + Buffer.from('admin:wrong').toString('base64') }
+    });
+    assert.equal(badAuth.status, 401);
+
+    const goodAuth = await fetch(`http://127.0.0.1:${port}/api/mode`, {
+      headers: { 'Authorization': 'Basic ' + Buffer.from('admin:secret').toString('base64') }
+    });
+    assert.equal(goodAuth.status, 200);
+  } finally {
+    delete process.env.AUTH_USERNAME;
+    delete process.env.AUTH_PASSWORD;
+  }
+});
