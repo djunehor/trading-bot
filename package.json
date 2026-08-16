@@ -10,7 +10,9 @@
     "build": "tsc",
     "test": "NODE_ENV=test tsx --test tests/*.test.ts",
     "test:cov": "npx -y c8 --check-coverage --lines 80 --statements 80 --functions 80 npm test",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "eslint": "eslint src tests",
+    "eslint:fix": "eslint src tests --fix"
   },
   "dependencies": {
     "@alpacahq/alpaca-trade-api": "^4.0.1",
@@ -22,13 +24,20 @@
     "vader-sentiment": "^1.1.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^9.6.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/ioredis": "^4.28.10",
     "@types/node": "^22.13.1",
     "c8": "^10.1.3",
+    "eslint": "^10.8.1",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import-x": "^4.17.1",
+    "eslint-plugin-sonarjs": "^4.2.0",
+    "eslint-plugin-unicorn": "^73.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.67.0"
   }
 }
