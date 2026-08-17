@@ -6,12 +6,14 @@ declare module 'vader-sentiment' {
     compound: number;
   }
 
-  export class SentimentIntensityAnalyzer {
-    static polarity_scores(text: string): SentimentResult;
+  export interface SentimentIntensityAnalyzer {
+    polarity_scores(text: string): SentimentResult;
   }
 
+  export const SentimentIntensityAnalyzer: SentimentIntensityAnalyzer;
+
   const vader: {
-    SentimentIntensityAnalyzer: typeof SentimentIntensityAnalyzer;
+    SentimentIntensityAnalyzer: SentimentIntensityAnalyzer;
   };
 
   export default vader;

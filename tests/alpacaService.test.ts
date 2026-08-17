@@ -1,18 +1,21 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test, { after } from 'node:test';
 
 process.env.NODE_ENV = 'test';
 
-import { getAccountMode, setAccountMode, getAlpacaCredentials } from '../src/config/alpaca.js';
-import { evaluateTradingStrategy, isExtendedHours } from '../src/services/tradingBot.js';
-import { saveOrderDb, getOrdersDb, syncPositionsDb, getPositionsDb, saveNewsSentimentsDb, getNewsSentimentsDb, saveBotStateDb, getBotStateDb } from '../src/db/database.js';
+import { config } from '../src/config/alpaca.js';
+import { Database } from '../src/db/database.js';
+
+const database = new Database(':memory:');
 import { app } from '../src/server.ts';
+import { BotManager } from '../src/services/botManager.js';
+import { MarketClock } from '../src/services/marketClock.js';
 
 test('Alpaca Config TypeScript - Default Mode is paper', () => {
-  const mode = getAccountMode();
+  const mode = config.getAccountMode();
   assert.equal(mode, 'paper');
 
-  const creds = getAlpacaCredentials();
+  const creds = config.getAlpacaCredentials();
   assert.equal(creds.mode, 'paper');
   assert.ok(creds.baseUrl.includes('paper-api.alpaca.markets'));
 });
@@ -21,40 +24,40 @@ test('Alpaca Config TypeScript - Toggle to live mode and back to paper', () => {
   process.env.ALPACA_LIVE_KEY_ID = 'test_live_key';
   process.env.ALPACA_LIVE_SECRET_KEY = 'test_live_secret';
 
-  setAccountMode('live');
-  assert.equal(getAccountMode(), 'live');
-  const liveCreds = getAlpacaCredentials();
+  config.setAccountMode('live');
+  assert.equal(config.getAccountMode(), 'live');
+  const liveCreds = config.getAlpacaCredentials();
   assert.equal(liveCreds.mode, 'live');
   assert.ok(liveCreds.baseUrl.includes('api.alpaca.markets'));
 
-  setAccountMode('paper');
-  assert.equal(getAccountMode(), 'paper');
+  config.setAccountMode('paper');
+  assert.equal(config.getAccountMode(), 'paper');
 });
 
 test('Alpaca Config TypeScript - Throw error on invalid mode', () => {
   assert.throws(() => {
-    setAccountMode('invalid_mode');
+    config.setAccountMode('invalid_mode');
   }, /Invalid account mode/);
 });
 
 test('Trading Strategy TypeScript - Momentum BUY signal', () => {
-  const signal = evaluateTradingStrategy([100, 105], 'momentum');
+  const signal = BotManager.evaluateTradingStrategy([100, 105], 'momentum');
   assert.equal(signal.action, 'BUY');
 });
 
 test('Trading Strategy TypeScript - Momentum SELL signal', () => {
-  const signal = evaluateTradingStrategy([100, 94], 'momentum');
+  const signal = BotManager.evaluateTradingStrategy([100, 94], 'momentum');
   assert.equal(signal.action, 'SELL');
 });
 
 test('Trading Strategy TypeScript - Momentum HOLD signal', () => {
-  const signal = evaluateTradingStrategy([100, 100.02], 'momentum');
+  const signal = BotManager.evaluateTradingStrategy([100, 100.02], 'momentum');
   assert.equal(signal.action, 'HOLD');
 });
 
 test('Extended Hours Helper - isExtendedHours returns boolean', () => {
-  const isExt = isExtendedHours();
-  assert.equal(typeof isExt, 'boolean');
+  const isExtended = MarketClock.isExtendedHours();
+  assert.equal(typeof isExtended, 'boolean');
 });
 
 test('Database Operations - saveOrderDb, getOrdersDb, syncPositionsDb, news and state', () => {
@@ -90,51 +93,67 @@ test('Database Operations - saveOrderDb, getOrdersDb, syncPositionsDb, news and 
     legs: null,
     trail_percent: null,
     trail_price: null,
-    hwm: null
+    hwm: null,
   };
 
-  saveOrderDb(mockOrder, 'paper');
-  const res = getOrdersDb('paper', 500, 0);
-  assert.ok(res.total >= 1);
-  const savedOrder = res.data.find((o: any) => o.id === mockOrder.id);
+  database.saveOrder(mockOrder, 'paper');
+  const response = database.getOrders('paper', 500, 0);
+  assert.ok(response.total >= 1);
+  const savedOrder = response.data.find((o: any) => o.id === mockOrder.id);
   assert.ok(savedOrder, 'Saved order found in DB');
   assert.equal(savedOrder.symbol, 'NVDA');
 
-  syncPositionsDb([{
-    asset_id: 'pos_1',
-    symbol: 'NVDA',
-    exchange: 'NASDAQ',
-    asset_class: 'us_equity',
-    avg_entry_price: '125.00',
-    qty: '5',
-    side: 'long',
-    market_value: '650.00',
-    cost_basis: '625.00',
-    unrealized_pl: '25.00',
-    unrealized_plpc: '0.04',
-    unrealized_intraday_pl: '5.00',
-    unrealized_intraday_plpc: '0.008',
-    current_price: '130.00',
-    lastday_price: '129.00',
-    change_today: '0.007'
-  }], 'paper');
+  database.syncPositions(
+    [
+      {
+        asset_id: 'pos_1',
+        symbol: 'NVDA',
+        exchange: 'NASDAQ',
+        asset_class: 'us_equity',
+        avg_entry_price: '125.00',
+        qty: '5',
+        side: 'long',
+        market_value: '650.00',
+        cost_basis: '625.00',
+        unrealized_pl: '25.00',
+        unrealized_plpc: '0.04',
+        unrealized_intraday_pl: '5.00',
+        unrealized_intraday_plpc: '0.008',
+        current_price: '130.00',
+        lastday_price: '129.00',
+        change_today: '0.007',
+      },
+    ],
+    'paper',
+  );
 
-  const posDb = getPositionsDb('paper');
-  assert.equal(posDb.length, 1);
-  assert.equal(posDb[0].symbol, 'NVDA');
+  const positions = database.getPositions('paper');
+  assert.equal(positions.length, 1);
+  assert.equal(positions[0].symbol, 'NVDA');
 
-  saveNewsSentimentsDb([{
-    symbol: 'NVDA',
-    score: 0.85,
-    sentiment: 'BULLISH',
-    headlineCount: 1,
-    topHeadline: 'NVDA surge'
-  }]);
+  database.saveNewsSentiments([
+    {
+      symbol: 'NVDA',
+      score: 0.85,
+      sentiment: 'BULLISH',
+      headlineCount: 1,
+      topHeadline: 'NVDA surge',
+    },
+  ]);
 
-  const newsDb = getNewsSentimentsDb();
-  assert.ok(newsDb.some(n => n.symbol === 'NVDA'));
+  const newsSentiments = database.getNewsSentiments();
+  assert.ok(newsSentiments.some((n) => n.symbol === 'NVDA'));
 
-  saveBotStateDb(true, { symbol: 'NVDA', qty: 1, intervalSeconds: 15, strategy: 'news_sentiment', stopLossPercent: 2, takeProfitPercent: 3, watchlist: [] }, 'paper');
-  const state = getBotStateDb('paper');
+  database.saveBotState(
+    true,
+    { symbol: 'NVDA', qty: 1, intervalSeconds: 15, strategy: 'news_sentiment', stopLossPercent: 2, takeProfitPercent: 3, watchlist: [] },
+    'paper',
+  );
+  const state = database.getBotState('paper');
   assert.equal(state.isRunning, true);
+});
+
+after(async () => {
+  const { cacheService } = await import('../src/services/cacheService.js');
+  await cacheService.close();
 });

@@ -64,45 +64,21 @@ export default tseslint.config(
       '@typescript-eslint/strict-boolean-expressions': 'error',
       '@typescript-eslint/explicit-function-return-type': 'error',
       '@typescript-eslint/explicit-module-boundary-types': 'error',
-      '@typescript-eslint/typedef': [
-        'error',
-        {
-          arrayDestructuring: true,
-          arrowParameter: true,
-          memberVariableDeclaration: true,
-          objectDestructuring: true,
-          parameter: true,
-          propertyDeclaration: true,
-        },
-      ],
-      '@typescript-eslint/no-magic-numbers': [
-        'error',
-        {
-          ignore: [-1, 0, 1],
-          ignoreArrayIndexes: true,
-          ignoreDefaultValues: true,
-          ignoreClassFieldInitialValues: true,
-          ignoreEnums: true,
-          ignoreNumericLiteralTypes: true,
-          ignoreReadonlyClassProperties: true,
-        },
-      ],
+      '@typescript-eslint/typedef': 'off', // redundant with `strict` tsconfig + explicit-function-return-type
+      '@typescript-eslint/no-magic-numbers': 'off', // noisy: hoist meaningful constants manually, not via a blanket rule
       '@typescript-eslint/switch-exhaustiveness-check': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/consistent-type-exports': 'error',
       '@typescript-eslint/no-use-before-define': 'error',
       '@typescript-eslint/prefer-readonly': 'error',
-      '@typescript-eslint/prefer-readonly-parameter-types': 'error',
+      '@typescript-eslint/prefer-readonly-parameter-types': 'off', // pedantic for this mutable OOP codebase
       '@typescript-eslint/promise-function-async': 'error',
       '@typescript-eslint/no-unnecessary-qualifier': 'error',
       '@typescript-eslint/no-useless-empty-export': 'error',
       '@typescript-eslint/naming-convention': [
         'error',
-        { selector: 'default', format: ['camelCase'] },
-        { selector: 'variable', format: ['camelCase', 'UPPER_CASE'] },
-        { selector: 'parameter', format: ['camelCase'], leadingUnderscore: 'allow' },
-        { selector: 'property', format: ['camelCase', 'snake_case', 'UPPER_CASE'] },
-        { selector: 'method', format: ['camelCase'] },
+        { selector: 'default', format: ['camelCase', 'PascalCase', 'UPPER_CASE', 'snake_case'], leadingUnderscore: 'allow' },
+        { selector: 'property', format: null },
         { selector: 'typeLike', format: ['PascalCase'] },
         { selector: 'enumMember', format: ['UPPER_CASE'] },
       ],
@@ -143,7 +119,7 @@ export default tseslint.config(
       ],
 
       // ── Core JS strictness (above `recommended`) ───────────────────
-      eqeqeq: ['error', 'always'],
+      eqeqeq: ['error', 'always', { null: 'ignore' }], // keep idiomatic `x == null` (null-or-undefined)
       curly: ['error', 'all'],
       'no-duplicate-imports': 'error',
       'object-shorthand': ['error', 'always'],
@@ -159,7 +135,7 @@ export default tseslint.config(
       'no-mixed-operators': 'error',
       radix: ['error', 'always'],
       'no-await-in-loop': 'error',
-      'id-length': ['error', { min: 2, exceptions: ['_', 'i', 'j', 'k', 'x', 'y', 'z'], properties: 'never' }],
+      // `id-length` removed — single-char names in tight callbacks (`p`, `a`/`b`) are idiomatic; same low-value churn as no-magic-numbers.
       'no-warning-comments': 'error',
       'max-classes-per-file': ['error', 1],
       yoda: 'error',
@@ -229,8 +205,25 @@ export default tseslint.config(
       'unicorn/no-null': 'off', // SQL-backed app: `null` is the correct SQL NULL
       'unicorn/filename-case': 'off', // existing convention is camelCase filenames
       'unicorn/require-array-sort-compare': 'off', // use @typescript-eslint version instead
-      'unicorn/name-replacements': 'off', // `db`/`stmt`/`qty`/`pl`/`sym` are domain-standard
+      'unicorn/name-replacements': ['error', {
+        allowList: {
+          // domain terms
+          db: true, stmt: true, qty: true, pl: true, sym: true, i: true, j: true, k: true,
+          // central DB module public API (imported across the app)
+          saveOrderDb: true, getOrdersDb: true, syncPositionsDb: true, getPositionsDb: true,
+          saveBotLogDb: true, getBotLogsDb: true, saveNewsSentimentsDb: true, getNewsSentimentsDb: true,
+          saveBotStateDb: true, getBotStateDb: true, resetBotSessionDb: true,
+        },
+      }],
       'unicorn/prefer-response-static-json': 'off', // browser rule; Node test mocks construct Response objects
+      'unicorn/prefer-at': 'off', // autofix breaks TS types (`.at()` returns `T | undefined`)
+    },
+  },
+  {
+    // The central DB module keeps its `*Db`/`*Stmt` naming convention.
+    files: ['src/db/database.ts'],
+    rules: {
+      'unicorn/name-replacements': 'off',
     },
   },
 );

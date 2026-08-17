@@ -2,17 +2,19 @@
   "name": "alpaca-trading-automation",
   "version": "1.0.0",
   "description": "Automated Stock Trading Application with Alpaca API, News Sentiment Engine, Paper/Live Account Switch, and Extended Hours Support",
-  "main": "dist/server.js",
+  "main": "dist/main.js",
   "type": "module",
   "scripts": {
-    "start": "node dist/server.js",
-    "dev": "tsx watch src/server.ts",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
     "build": "tsc",
-    "test": "NODE_ENV=test tsx --test tests/*.test.ts",
+    "test": "NODE_ENV=test tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:cov": "npx -y c8 --check-coverage --lines 80 --statements 80 --functions 80 npm test",
     "lint": "tsc --noEmit",
     "eslint": "eslint src tests",
-    "eslint:fix": "eslint src tests --fix"
+    "eslint:fix": "eslint src tests --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
   },
   "dependencies": {
     "@alpacahq/alpaca-trade-api": "^4.0.1",
@@ -34,8 +36,10 @@
     "eslint": "^10.8.1",
     "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-import-x": "^4.17.1",
+    "eslint-plugin-jsdoc": "^63.3.3",
     "eslint-plugin-sonarjs": "^4.2.0",
     "eslint-plugin-unicorn": "^73.0.0",
+    "prettier": "^3.9.6",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.67.0"

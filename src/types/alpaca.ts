@@ -1,4 +1,4 @@
-export type AccountMode = 'paper' | 'live';
+export type AccountMode = 'live' | 'paper';
 
 export interface AlpacaCredentials {
   baseUrl: string;
@@ -62,10 +62,10 @@ export interface AlpacaPosition {
 }
 
 export type OrderSide = 'buy' | 'sell';
-export type OrderType = 'market' | 'limit' | 'stop' | 'stop_limit' | 'trailing_stop';
-export type TimeInForce = 'day' | 'gtc' | 'opg' | 'cls' | 'ioc' | 'fok';
+export type OrderType = 'limit' | 'market' | 'stop_limit' | 'stop' | 'trailing_stop';
+export type TimeInForce = 'cls' | 'day' | 'fok' | 'gtc' | 'ioc' | 'opg';
 
-export interface CreateOrderParams {
+export interface CreateOrderParameters {
   symbol: string;
   qty?: number | string;
   notional?: number;
@@ -75,7 +75,7 @@ export interface CreateOrderParams {
   limit_price?: number | string | null;
   stop_price?: number | string | null;
   extended_hours?: boolean;
-  asset_class?: 'us_equity' | 'crypto';
+  asset_class?: 'crypto' | 'us_equity';
   reason?: string;
 }
 
@@ -126,7 +126,7 @@ export interface AlpacaBar {
 }
 
 export interface NewsArticle {
-  id: string | number;
+  id: number | string;
   headline: string;
   summary: string;
   url: string;
@@ -138,7 +138,7 @@ export interface NewsArticle {
 export interface StockSentiment {
   symbol: string;
   score: number; // -1.0 to +1.0
-  sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  sentiment: 'BEARISH' | 'BULLISH' | 'NEUTRAL';
   headlineCount: number;
   topHeadline: string;
   headlines: string[];
@@ -148,23 +148,23 @@ export interface BotConfig {
   symbol: string;
   qty: number;
   intervalSeconds: number;
-  strategy: 'news_sentiment' | 'momentum' | 'ma_crossover' | 'technical';
+  strategy: 'ma_crossover' | 'momentum' | 'news_sentiment' | 'technical';
   stopLossPercent: number;
   takeProfitPercent: number;
   trailingStopPercent?: number;
   extendedHours?: boolean;
-  assetClass?: 'us_equity' | 'crypto';
+  assetClass?: 'crypto' | 'us_equity';
   watchlist: string[];
 }
 
 export interface BotLog {
   timestamp: string;
   message: string;
-  type: 'info' | 'success' | 'warning' | 'error';
+  type: 'error' | 'info' | 'success' | 'warning';
 }
 
 export interface TradeSignal {
-  action: 'BUY' | 'SELL' | 'HOLD';
+  action: 'BUY' | 'HOLD' | 'SELL';
   targetSymbol: string;
   reason: string;
   sentimentScore?: number;

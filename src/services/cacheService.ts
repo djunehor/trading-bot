@@ -1,119 +1,83 @@
-import ioredis from 'ioredis';
 import dotenv from 'dotenv';
-import { createLogger } from './logger.js';
+import { Redis } from 'ioredis';
+
+import { Logger } from './logger.js';
+
 dotenv.config();
 
-const RedisConstructor = (ioredis as any).default || ioredis;
+export interface ICache {
+  get<T>(key: string): Promise<T | null>;
+  set<T>(key: string, value: T, ttlSeconds?: number): Promise<void>;
+  remove(key: string): Promise<void>;
+  clearAll(): Promise<void>;
+}
 
-const log = createLogger('CacheService');
+export class CacheService implements ICache {
+  private readonly redis: Redis;
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
-
-let isRedisConnected = false;
-let redisClient: any = null;
-
-// In-Memory Fallback Cache (used if Redis is offline or in test mode)
-const memoryFallbackCache = new Map<string, { value: any; expiresAt: number }>();
-
-if (process.env.NODE_ENV !== 'test') {
-  try {
-    redisClient = new RedisConstructor(REDIS_URL, {
+  constructor(options: { url?: string } = {}) {
+    const url = options.url || process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+    this.redis = new Redis(url, {
       maxRetriesPerRequest: 3,
       connectTimeout: 5000,
       retryStrategy(times: number) {
-        if (times > 3) return null; // stop retrying
+        if (times > 3) {
+          return null;
+        } // stop retrying
         return Math.min(times * 500, 3000);
       },
     });
 
-    redisClient.on('connect', () => {
-      isRedisConnected = true;
-      log.info('Connected to Redis server successfully.');
-    });
-
-    redisClient.on('error', () => {
-      isRedisConnected = false;
-    });
-
-    redisClient.on('ready', () => {
-      isRedisConnected = true;
-    });
-  } catch (err: any) {
-    isRedisConnected = false;
-    log.warn('Redis initialization failed. Using in-memory fallback cache.');
+    this.redis.on('error', () => {});
   }
-}
 
-export async function getCache<T>(key: string): Promise<T | null> {
-  const prefixedKey = `trading:${key}`;
-
-  if (isRedisConnected && redisClient) {
+  async get<T>(key: string): Promise<T | null> {
     try {
-      const data = await redisClient.get(prefixedKey);
-      if (data) {
-        return JSON.parse(data) as T;
+      const value = await this.redis.get(this.prefixed(key));
+      return value ? (JSON.parse(value) as T) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async set<T>(key: string, value: T, ttlSeconds = 60): Promise<void> {
+    try {
+      await this.redis.set(this.prefixed(key), JSON.stringify(value), 'EX', ttlSeconds);
+    } catch {
+      Logger.warn(`Cache set failed for key "${key}".`);
+    }
+  }
+
+  async remove(key: string): Promise<void> {
+    try {
+      await this.redis.del(this.prefixed(key));
+    } catch {
+      Logger.warn(`Cache remove failed for key "${key}".`);
+    }
+  }
+
+  async clearAll(): Promise<void> {
+    try {
+      const keys = await this.redis.keys('trading:*');
+      if (keys.length > 0) {
+        await this.redis.del(keys);
       }
-    } catch (err: any) {
-      // Fall through to memory fallback
+    } catch {
+      Logger.warn('Cache clearAll failed.');
     }
   }
 
-  // Check In-Memory Fallback Cache
-  const memoryItem = memoryFallbackCache.get(prefixedKey);
-  if (memoryItem) {
-    if (Date.now() < memoryItem.expiresAt) {
-      return memoryItem.value as T;
-    } else {
-      memoryFallbackCache.delete(prefixedKey);
-    }
+  async close(): Promise<void> {
+    await this.redis.quit();
   }
 
-  return null;
-}
-
-export async function setCache<T>(key: string, data: T, ttlSeconds: number = 60): Promise<void> {
-  const prefixedKey = `trading:${key}`;
-  const serialized = JSON.stringify(data);
-
-  if (isRedisConnected && redisClient) {
-    try {
-      await redisClient.set(prefixedKey, serialized, 'EX', ttlSeconds);
-    } catch (err: any) {
-      // Fall through to memory set
-    }
+  isRedisActive(): boolean {
+    return this.redis.status === 'ready';
   }
 
-  memoryFallbackCache.set(prefixedKey, {
-    value: data,
-    expiresAt: Date.now() + (ttlSeconds * 1000)
-  });
-}
-
-export async function delCache(key: string): Promise<void> {
-  const prefixedKey = `trading:${key}`;
-
-  if (isRedisConnected && redisClient) {
-    try {
-      await redisClient.del(prefixedKey);
-    } catch (err: any) {
-      // Ignore
-    }
-  }
-
-  memoryFallbackCache.delete(prefixedKey);
-}
-
-export async function clearAllCache(): Promise<void> {
-  memoryFallbackCache.clear();
-  if (isRedisConnected && redisClient) {
-    try {
-      await redisClient.flushdb();
-    } catch (err: any) {
-      // Ignore
-    }
+  private prefixed(key: string): string {
+    return `trading:${key}`;
   }
 }
 
-export function isRedisActive(): boolean {
-  return isRedisConnected;
-}
+export const cacheService = new CacheService();

@@ -1,0 +1,100 @@
+import { config } from '../config/alpaca.js';
+import { database } from '../db/database.js';
+import type { BotConfig, BotStatus, TradeSignal } from '../types/alpaca.js';
+
+import { DEFAULT_CRYPTO_CONFIG, DEFAULT_STOCK_CONFIG, RISK_BUDGET_PER_TRADE } from './botConfig.js';
+import { BotEngine } from './tradingBot.js';
+
+export const stockBot = new BotEngine('us_equity', DEFAULT_STOCK_CONFIG, database);
+export const cryptoBot = new BotEngine('crypto', DEFAULT_CRYPTO_CONFIG, database);
+
+export class BotManager {
+  static getInstance(assetClass: 'crypto' | 'us_equity' = 'us_equity'): BotEngine {
+    return assetClass === 'crypto' ? cryptoBot : stockBot;
+  }
+
+  static start(botConfig: Partial<BotConfig> = {}, startingEquity?: number): BotStatus {
+    const targetAssetClass = botConfig.assetClass || 'us_equity';
+    return BotManager.getInstance(targetAssetClass).start(botConfig, startingEquity);
+  }
+
+  static stop(assetClass: 'crypto' | 'us_equity' = 'us_equity'): BotStatus {
+    return BotManager.getInstance(assetClass).stop();
+  }
+
+  static getStatus(assetClass: 'crypto' | 'us_equity' = 'us_equity'): BotStatus {
+    return BotManager.getInstance(assetClass).getStatus();
+  }
+
+  static getAllStatus(): { stockBot: BotStatus; cryptoBot: BotStatus } {
+    return { stockBot: stockBot.getStatus(), cryptoBot: cryptoBot.getStatus() };
+  }
+
+  static restoreStateOnBoot(): void {
+    const mode = config.getAccountMode();
+
+    const stockSaved = database.getBotState(mode, 'us_equity');
+    if (stockSaved.isRunning) {
+      stockBot.logEvent('Previous Stock Bot state was RUNNING. Resuming Stock Bot on boot...');
+      stockBot.start(stockSaved.config || {});
+    } else {
+      stockBot.logEvent('Previous Stock Bot state was STOPPED. Remaining STOPPED on boot.');
+    }
+
+    const cryptoSaved = database.getBotState(mode, 'crypto');
+    if (cryptoSaved.isRunning) {
+      cryptoBot.logEvent('Previous Crypto Bot state was RUNNING. Resuming Crypto Bot on boot...');
+      cryptoBot.start(cryptoSaved.config || {});
+    } else {
+      cryptoBot.logEvent('Previous Crypto Bot state was STOPPED. Remaining STOPPED on boot.');
+    }
+  }
+
+  static evaluateTradingStrategy(prices: number[], strategyType = 'momentum', targetSymbol = 'AAPL'): TradeSignal {
+    if (!prices || prices.length < 2) {
+      return { action: 'HOLD', targetSymbol, reason: 'Insufficient price data' };
+    }
+    const latestPrice = prices[prices.length - 1];
+    const previousPrice = prices[prices.length - 2];
+    const priceChangePercent = ((latestPrice - previousPrice) / previousPrice) * 100;
+    if (strategyType === 'momentum') {
+      if (priceChangePercent > 0.05) {
+        return { action: 'BUY', targetSymbol, reason: `Upward momentum (+${priceChangePercent.toFixed(2)}%)` };
+      }
+      if (priceChangePercent < -0.05) {
+        return { action: 'SELL', targetSymbol, reason: `Downward momentum (${priceChangePercent.toFixed(2)}%)` };
+      }
+    }
+    return { action: 'HOLD', targetSymbol, reason: 'No trade condition met' };
+  }
+
+  static volatilitySizedQty(price: number, averageTrueRangePct: number): number {
+    if (price <= 0 || averageTrueRangePct <= 0) {
+      return 0;
+    }
+    const positionValue = RISK_BUDGET_PER_TRADE / (averageTrueRangePct / 100);
+    return Math.max(1, Math.floor(positionValue / price));
+  }
+
+  static async calculatePositionSize(
+    symbol: string,
+    price: number,
+    sentimentScore: number,
+    headlines: string[],
+    availableCash: number,
+    fallbackQty = 0,
+    assetClass: 'crypto' | 'us_equity' = 'us_equity',
+  ): Promise<number> {
+    if (!price || price <= 0 || !availableCash || availableCash <= 0) {
+      return 0;
+    }
+    const cashBasedQty = Math.max(1, Math.floor((availableCash * 0.05) / price));
+    if (assetClass === 'crypto') {
+      const targetNotional = availableCash * 0.05;
+      const qty = targetNotional / price;
+      const minQty = 15 / price;
+      return Math.max(qty, minQty);
+    }
+    return cashBasedQty;
+  }
+}

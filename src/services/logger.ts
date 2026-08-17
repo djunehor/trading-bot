@@ -1,24 +1,33 @@
 type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCCESS';
 
-interface Logger {
-  info: (message: string, data?: any) => void;
-  warn: (message: string, data?: any) => void;
-  error: (message: string, data?: any) => void;
-  success: (message: string, data?: any) => void;
-}
+export class Logger {
+  static info(message: string, data?: unknown): void {
+    Logger.write('INFO', message, data);
+  }
 
-function formatLine(level: LogLevel, module: string, message: string, data?: any): string {
-  const ts = new Date().toISOString();
-  const prefix = `[${ts}] [${module}] [${level}]`;
-  const suffix = data !== undefined ? ` ${JSON.stringify(data)}` : '';
-  return `${prefix} ${message}${suffix}`;
-}
+  static warn(message: string, data?: unknown): void {
+    Logger.write('WARN', message, data);
+  }
 
-export function createLogger(module: string): Logger {
-  return {
-    info: (msg, data) => console.log(formatLine('INFO', module, msg, data)),
-    warn: (msg, data) => console.warn(formatLine('WARN', module, msg, data)),
-    error: (msg, data) => console.error(formatLine('ERROR', module, msg, data)),
-    success: (msg, data) => console.log(formatLine('SUCCESS', module, msg, data)),
-  };
+  static error(message: string, data?: unknown): void {
+    Logger.write('ERROR', message, data);
+  }
+
+  static success(message: string, data?: unknown): void {
+    Logger.write('SUCCESS', message, data);
+  }
+
+  private static write(level: LogLevel, message: string, data?: unknown): void {
+    const timestamp = new Date().toISOString();
+    const suffix = data !== undefined ? ` ${JSON.stringify(data)}` : '';
+    const line = `[${timestamp}] [${level}] ${message}${suffix}`;
+
+    if (level === 'ERROR') {
+      console.error(line);
+    } else if (level === 'WARN') {
+      console.warn(line);
+    } else {
+      console.log(line);
+    }
+  }
 }
