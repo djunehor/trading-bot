@@ -190,11 +190,12 @@ test('Alpaca API Mock - getTopMovers uses screener with price filter', async () 
       return new Response(
         JSON.stringify({
           gainers: [
-            { symbol: 'GOOD', price: 25 },
+            { symbol: 'GOOD', price: 55 },
+            { symbol: 'MID', price: 30 },
             { symbol: 'CHEAP', price: 3 },
             { symbol: 'WARRANT', price: 8 },
           ],
-          losers: [{ symbol: 'BAD', price: 30 }],
+          losers: [{ symbol: 'BAD', price: 60 }],
           most_actives: [],
         }),
         { status: 200 },
@@ -204,9 +205,10 @@ test('Alpaca API Mock - getTopMovers uses screener with price filter', async () 
   };
   await cacheService.clearAll();
   const movers = await alpacaService.getTopMovers();
-  assert.ok(movers.includes('GOOD'));
-  assert.ok(movers.includes('BAD'));
-  assert.ok(!movers.includes('CHEAP')); // below $20 floor
+  assert.ok(movers.includes('GOOD')); // $55 >= $50 floor
+  assert.ok(movers.includes('BAD')); // $60 >= $50 floor
+  assert.ok(!movers.includes('MID')); // $30 is below the $50 floor
+  assert.ok(!movers.includes('CHEAP')); // below $50 floor
   assert.ok(!movers.includes('WARRANT')); // ends in W
 });
 

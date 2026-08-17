@@ -418,7 +418,7 @@ export class TechnicalService {
     const secondLowIndex = 10 + recentCloses.slice(10).indexOf(secondLow);
     const rsiAtFirstLow = this.relativeStrengthIndex(closes.slice(0, closes.length - lookback + firstLowIndex + 1), 14);
     const rsiAtSecondLow = this.relativeStrengthIndex(closes.slice(0, closes.length - lookback + secondLowIndex + 1), 14);
-    if (secondLow < firstLow && rsiAtSecondLow > rsiAtFirstLow && context.relativeStrengthIndex < 50) {
+    if (secondLow < firstLow && rsiAtSecondLow - rsiAtFirstLow >= 3 && context.relativeStrengthIndex < 50) {
       return {
         symbol: context.symbol,
         action: 'BUY',

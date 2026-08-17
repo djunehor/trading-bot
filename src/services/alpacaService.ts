@@ -329,7 +329,7 @@ export class AlpacaService {
       };
 
       // Filter out penny stocks, warrants, and junk:
-      // - price >= $20 (kills micro-caps & pump groups)
+      // - price >= $50 (kills micro-caps & pump groups)
       // - clean ticker (letters only, 1-5 chars)
       // - no warrant suffix (ends in W)
       const movers: string[] = [];
@@ -339,7 +339,7 @@ export class AlpacaService {
         for (const item of group || []) {
           const sym = item?.symbol || '';
           const price = item?.price ?? 0;
-          if (sym && price >= 20 && isCleanTicker(sym) && !seen.has(sym)) {
+          if (sym && price >= 50 && isCleanTicker(sym) && !seen.has(sym)) {
             seen.add(sym);
             movers.push(sym);
           }
