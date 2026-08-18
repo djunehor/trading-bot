@@ -36,7 +36,10 @@ export class BotManager {
     const stockSaved = database.getBotState(mode, 'us_equity');
     if (stockSaved.isRunning) {
       stockBot.logEvent('Previous Stock Bot state was RUNNING. Resuming Stock Bot on boot...');
-      stockBot.start(stockSaved.config || {});
+      // Strip the persisted watchlist — the curated code default (mature universe)
+      // is authoritative, so stale saved watchlists can't override code changes.
+      const { watchlist: _stockWatchlist, ...stockRest } = stockSaved.config || {};
+      stockBot.start(stockRest);
     } else {
       stockBot.logEvent('Previous Stock Bot state was STOPPED. Remaining STOPPED on boot.');
     }
@@ -44,7 +47,8 @@ export class BotManager {
     const cryptoSaved = database.getBotState(mode, 'crypto');
     if (cryptoSaved.isRunning) {
       cryptoBot.logEvent('Previous Crypto Bot state was RUNNING. Resuming Crypto Bot on boot...');
-      cryptoBot.start(cryptoSaved.config || {});
+      const { watchlist: _cryptoWatchlist, ...cryptoRest } = cryptoSaved.config || {};
+      cryptoBot.start(cryptoRest);
     } else {
       cryptoBot.logEvent('Previous Crypto Bot state was STOPPED. Remaining STOPPED on boot.');
     }
