@@ -300,9 +300,11 @@ export class BotEngine {
       return false;
     }
 
-    const nyDate = MarketClock.nowInNewYork();
-    const dayOfWeek = nyDate.getDay();
-    const totalMinutes = nyDate.getHours() * MarketClock.MINUTES_PER_HOUR + nyDate.getMinutes();
+    // Use getNYParts() directly — nowInNewYork() returns a shifted Date whose
+    // .getHours() reads back the server's UTC hour, not the NY hour (timezone bug).
+    const ny = MarketClock.getNYParts();
+    const dayOfWeek = ny.dayOfWeek;
+    const totalMinutes = ny.totalMinutes;
     const sweepWindowStart = MarketClock.REGULAR_OPEN_MINUTES - 5; // 9:25 AM ET
     const isWeekday = dayOfWeek >= MarketClock.MONDAY && dayOfWeek <= MarketClock.FRIDAY;
     const isInSweepWindow = totalMinutes >= sweepWindowStart && totalMinutes < MarketClock.REGULAR_OPEN_MINUTES;
@@ -310,7 +312,7 @@ export class BotEngine {
       return false;
     }
 
-    const todayString = nyDate.toDateString();
+    const todayString = `${ny.year}-${ny.month}-${ny.day}`;
     if (this.lastPreOpenSweepDate === todayString) {
       return false;
     }

@@ -96,11 +96,6 @@ export class MarketClock {
     return new Date(utc.getTime() + minuteDiff * 60_000);
   }
 
-  static nowInNewYork(): Date {
-    const parts = MarketClock.getNYParts();
-    return MarketClock.makeNYDate(parts.year, parts.month, parts.day, parts.hour, parts.minute, parts.second);
-  }
-
   static minutesSinceMidnightNY(): number {
     return MarketClock.getNYParts().totalMinutes;
   }
