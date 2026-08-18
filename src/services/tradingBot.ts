@@ -6,6 +6,7 @@ import { alpacaService } from './alpacaService.js';
 import {
   BUY_COOLDOWN_MS,
   CASH_EQUIVALENT_TICKERS,
+  DAILY_LOSS_LIMIT,
   INDEX_ACCUMULATION_TICKERS,
   INDEX_CASH_MIN_PCT,
   INDEX_COOLDOWN_MS,
@@ -596,6 +597,16 @@ export class BotEngine {
     const todayRealizedPl = await portfolioService.getTodayRealizedPl();
     const memeBudget = Math.max(0, todayRealizedPl * MEME_PROFIT_SHARE);
     this.logEvent(`Profit gate: today realized $${todayRealizedPl.toFixed(2)}, volatile budget $${memeBudget.toFixed(2)}`, 'info');
+
+    // Daily loss limit: stop opening new positions once today's realized loss
+    // crosses the threshold — prevents death-by-a-thousand-cuts overtrading.
+    if (this.assetClass === 'us_equity' && todayRealizedPl <= DAILY_LOSS_LIMIT) {
+      this.logEvent(
+        `Daily loss limit hit (today realized $${todayRealizedPl.toFixed(2)} ≤ $${DAILY_LOSS_LIMIT}). Halting new buys until next day.`,
+        'warning',
+      );
+      return null;
+    }
 
     const positions = await alpacaService.getPositions();
     const openOrders = await alpacaService.getOrders('open', 50);

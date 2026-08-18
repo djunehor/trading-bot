@@ -45,6 +45,10 @@ export const TBILL_BUY_PCT = 0.1; // deploy 10% of cash per sweep
 // Stop the crypto bot from opening new BUY positions — sell-only mode.
 export const IS_DISABLE_CRYPTO_BUYS = true;
 
+// Daily loss limit: halt ALL new position opens once today's realized P/L
+// drops below this. Prevents death-by-a-thousand-cuts overtrading.
+export const DAILY_LOSS_LIMIT = -300; // halt new buys after -$300 realized today
+
 // Volatility-scaled sizing & profit-gated risk for volatile names.
 export const VOLATILE_ATR_PCT = 3; // ATR% > 3% per bar = volatile/meme stock
 export const RISK_BUDGET_PER_TRADE = 25; // a 1-ATR move should cost ~$25 regardless of volatility
