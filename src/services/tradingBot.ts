@@ -44,7 +44,7 @@ interface TechnicalBuyOutcome {
   memeSpentThisCycle: number;
 }
 
-const MAX_TECH_BUYS_PER_CYCLE = 2;
+const MAX_TECH_BUYS_PER_CYCLE = 1;
 
 export class BotEngine {
   public assetClass: 'crypto' | 'us_equity';
@@ -567,6 +567,12 @@ export class BotEngine {
     if (this.assetClass === 'us_equity' && !MarketClock.isMarketOpenOrOpeningSoon('us_equity')) {
       return;
     }
+    // Only open new positions during regular market hours (9:30 AM–4:00 PM ET).
+    // Pre-market/after-hours limit orders fill at bad prices — this is where the
+    // overnight bleed happened. Risk management still runs to exit positions.
+    if (this.assetClass === 'us_equity' && MarketClock.isExtendedHours()) {
+      return;
+    }
 
     this.logEvent(`Strategy cycle (${this.currentConfig.strategy.toUpperCase()})`);
 
@@ -611,7 +617,15 @@ export class BotEngine {
     const positions = await alpacaService.getPositions();
     const openOrders = await alpacaService.getOrders('open', 50);
 
-    const activeWatchlist = this.assetClass === 'crypto' ? await alpacaService.getTopCryptoMovers() : await alpacaService.getTopMovers();
+    // Default to the curated MATURE watchlist (large-caps + broad ETFs).
+    // Do NOT use getTopMovers() — that pulls in the market's top % gainers,
+    // which are always micro-caps and leveraged ETFs (the meme-stock bleed).
+    const activeWatchlist =
+      this.assetClass === 'crypto'
+        ? await alpacaService.getTopCryptoMovers()
+        : (this.currentConfig.watchlist && this.currentConfig.watchlist.length > 0
+          ? this.currentConfig.watchlist
+          : await alpacaService.getTopMovers());
 
     return {
       account,

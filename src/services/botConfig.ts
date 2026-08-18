@@ -32,7 +32,7 @@ export interface PositionRiskContext {
 export const BUY_COOLDOWN_MS = 15 * 60 * 1000; // 15-minute minimum cooldown per symbol
 export const INDEX_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4-hour cooldown for index accumulation buys
 export const RISK_CHECK_SECONDS = 30; // stop-loss / trailing-stop / take-profit runs every 30s
-export const TECH_MIN_CONFIDENCE = 0.55; // act on technical signals with confidence >= 0.55
+export const TECH_MIN_CONFIDENCE = 0.7; // act only on strong technical signals (was 0.55 — too trigger-happy)
 export const INDEX_ACCUMULATION_TICKERS = new Set(['SPY', 'QQQ']); // long-horizon index ETFs
 export const INDEX_CASH_MIN_PCT = 40; // only accumulate indexes if cash is >40% of portfolio
 
@@ -52,53 +52,45 @@ export const DAILY_LOSS_LIMIT = -300; // halt new buys after -$300 realized toda
 // Volatility-scaled sizing & profit-gated risk for volatile names.
 export const VOLATILE_ATR_PCT = 3; // ATR% > 3% per bar = volatile/meme stock
 export const RISK_BUDGET_PER_TRADE = 25; // a 1-ATR move should cost ~$25 regardless of volatility
-export const MEME_PROFIT_SHARE = 0.5; // max volatile exposure = 50% of today's realized profit
+export const MEME_PROFIT_SHARE = 0.3; // max volatile exposure = 30% of today's realized profit
+
+// Mature, liquid universe — the ONLY names the bot should trade by default.
+// Long-term ETFs (S&P 500, Nasdaq) + mega/large-cap stocks. No meme stocks,
+// no micro-caps, no leveraged ETFs.
+export const MATURE_STOCK_WATCHLIST = [
+  'SPY',
+  'QQQ',
+  'AAPL',
+  'MSFT',
+  'NVDA',
+  'GOOGL',
+  'AMZN',
+  'META',
+  'TSLA',
+  'AMD',
+  'NFLX',
+  'JPM',
+  'V',
+  'UNH',
+  'COST',
+  'DIS',
+  'BA',
+  'QCOM',
+  'MU',
+  'PLTR',
+];
 
 export const DEFAULT_STOCK_CONFIG: BotConfig = {
   symbol: 'AAPL',
   qty: 1,
   intervalSeconds: 300,
   strategy: 'news_sentiment',
-  stopLossPercent: 2,
-  takeProfitPercent: 3,
-  trailingStopPercent: 1.5,
+  stopLossPercent: 4,
+  takeProfitPercent: 8,
+  trailingStopPercent: 3,
   extendedHours: true,
   assetClass: 'us_equity',
-  watchlist: [
-    'AAPL',
-    'NVDA',
-    'TSLA',
-    'MSFT',
-    'AMZN',
-    'META',
-    'GOOGL',
-    'AMD',
-    'NFLX',
-    'PLTR',
-    'SPY',
-    'QQQ',
-    'QCOM',
-    'DIS',
-    'COIN',
-    'JPM',
-    'V',
-    'UNH',
-    'BA',
-    'COST',
-    'BE',
-    'NOVT',
-    'ZVRA',
-    'SOFI',
-    'ITRI',
-    'DLO',
-    'MU',
-    'ONDS',
-    'CLBT',
-    'NET',
-    'WSE',
-    'SNDK',
-    'DOCN',
-  ],
+  watchlist: MATURE_STOCK_WATCHLIST,
 };
 
 export const DEFAULT_CRYPTO_WATCHLIST = [
