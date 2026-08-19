@@ -31,7 +31,7 @@ export interface TechnicalSignal {
   };
 }
 
-interface SignalContext {
+export interface SignalContext {
   symbol: string;
   bars: Bar[];
   dailyBars: Bar[];
@@ -130,15 +130,18 @@ export class TechnicalService {
     if (!context) {
       return null;
     }
+    return this.evaluate(context);
+  }
 
+  // Pure signal evaluation over an already-built context — reused by the backtester.
+  evaluate(context: SignalContext): TechnicalSignal {
     for (const detect of this.signalDetectors) {
       const signal = detect(context);
       if (signal) {
         return signal;
       }
     }
-
-    return { symbol, action: 'HOLD', confidence: 0, reason: 'No clear signal', indicators: context.indicators };
+    return { symbol: context.symbol, action: 'HOLD', confidence: 0, reason: 'No clear signal', indicators: context.indicators };
   }
 
   async analyzeWatchlist(symbols: string[]): Promise<TechnicalSignal[]> {
@@ -220,15 +223,20 @@ export class TechnicalService {
 
   private async buildSignalContext(symbol: string): Promise<SignalContext | null> {
     const bars = await this.fetchBars(symbol);
+    const dailyBars = await this.fetchDailyBars(symbol, 260);
+    const realTimePrice = await alpacaService.getCurrentPrice(symbol);
+    return this.buildContextFromBars(symbol, bars, dailyBars, realTimePrice ?? undefined);
+  }
+
+  // Pure context builder over historical bars — reused by the backtester (no network).
+  buildContextFromBars(symbol: string, bars: Bar[], dailyBars: Bar[], currentPriceOverride?: number): SignalContext | null {
     if (bars.length < 20) {
       return null;
     }
 
     const closes = bars.map((bar) => bar.c);
     const volumes = bars.map((bar) => bar.v);
-    // Real-time price for ALL signal decisions — never use the stale bar close.
-    const realTimePrice = await alpacaService.getCurrentPrice(symbol);
-    const currentPrice = realTimePrice === null ? closes[closes.length - 1] : realTimePrice;
+    const currentPrice = currentPriceOverride ?? closes[closes.length - 1];
     const previousPrice = closes[closes.length - 2] || currentPrice;
     const priceChangePct5Min = ((currentPrice - previousPrice) / previousPrice) * 100;
 
@@ -256,8 +264,6 @@ export class TechnicalService {
       averageTrueRange: Math.round(atrValue * 100) / 100,
       averageTrueRangePct: Math.round(averageTrueRangePct * 100) / 100,
     };
-
-    const dailyBars = await this.fetchDailyBars(symbol, 260);
 
     return {
       symbol,

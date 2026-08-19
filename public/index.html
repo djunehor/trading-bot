@@ -358,6 +358,48 @@
           </table>
         </div>
       </section>
+
+      <!-- Section: Strategy Backtest -->
+      <section class="card full-width-card">
+        <div class="card-header">
+          <div>
+            <h2>🧪 Strategy Backtest</h2>
+            <p class="subtitle">Replay technical signals + risk rules over historical bars (no news).</p>
+          </div>
+        </div>
+        <form id="backtestForm" style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:1rem;">
+          <div class="form-group" style="flex:1; min-width:220px;">
+            <label for="backtestSymbols">Symbols (comma-separated)</label>
+            <input type="text" id="backtestSymbols" placeholder="AAPL, NVDA, TSLA" required>
+          </div>
+          <div class="form-group">
+            <label for="backtestStart">Start date</label>
+            <input type="date" id="backtestStart" required>
+          </div>
+          <div class="form-group">
+            <label for="backtestEnd">End date</label>
+            <input type="date" id="backtestEnd" required>
+          </div>
+          <button type="submit" id="runBacktestBtn" class="btn btn-primary">Run Backtest</button>
+        </form>
+        <div id="backtestStatus" class="text-muted" style="margin-bottom:1rem;">Enter a date range and symbols, then run.</div>
+        <div id="backtestSummary" class="hidden"></div>
+        <div class="table-wrapper hidden" id="backtestTradesWrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Exit Date</th>
+                <th>Symbol</th>
+                <th>Reason</th>
+                <th>Entry</th>
+                <th>Exit</th>
+                <th>P/L</th>
+              </tr>
+            </thead>
+            <tbody id="backtestTradesBody"></tbody>
+          </table>
+        </div>
+      </section>
     </main>
   </div>
 

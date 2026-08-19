@@ -1447,5 +1447,71 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ── Strategy Backtest ─────────────────────────────────────────────
+  const backtestForm = document.getElementById('backtestForm');
+  if (backtestForm) {
+    backtestForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const symbols = document.getElementById('backtestSymbols').value.trim();
+      const start = document.getElementById('backtestStart').value;
+      const end = document.getElementById('backtestEnd').value;
+      const statusEl = document.getElementById('backtestStatus');
+      const summaryEl = document.getElementById('backtestSummary');
+      const wrapper = document.getElementById('backtestTradesWrapper');
+      const tbody = document.getElementById('backtestTradesBody');
+      const button = document.getElementById('runBacktestBtn');
+
+      if (!symbols || !start || !end) {
+        showToast('Fill in symbols, start, and end dates.', 'error');
+        return;
+      }
+
+      button.disabled = true;
+      statusEl.textContent = 'Running backtest… this can take a while for many symbols.';
+      summaryEl.classList.add('hidden');
+      wrapper.classList.add('hidden');
+
+      try {
+        const response = await fetch('/api/backtest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols, start, end }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Backtest failed');
+
+        statusEl.textContent = `Done — ${data.symbols.length} symbol(s), ${data.trades} trades.`;
+        const color = (v) => (v >= 0 ? '#34d399' : '#f87171');
+        summaryEl.innerHTML = `
+          <div style="display:flex; flex-wrap:wrap; gap:18px; margin-bottom:14px;">
+            <div><span class="text-muted" style="font-size:12px;">Trades</span><div class="metric-value">${data.trades}</div></div>
+            <div><span class="text-muted" style="font-size:12px;">Win rate</span><div class="metric-value">${data.winRate.toFixed(1)}%</div></div>
+            <div><span class="text-muted" style="font-size:12px;">Total P/L</span><div class="metric-value" style="color:${color(data.totalPnl)}">$${data.totalPnl.toFixed(2)}</div></div>
+            <div><span class="text-muted" style="font-size:12px;">Avg win</span><div class="metric-value" style="color:#34d399">$${data.avgWin.toFixed(2)}</div></div>
+            <div><span class="text-muted" style="font-size:12px;">Avg loss</span><div class="metric-value" style="color:#f87171">$${data.avgLoss.toFixed(2)}</div></div>
+            <div><span class="text-muted" style="font-size:12px;">Max drawdown</span><div class="metric-value" style="color:#f87171">-$${data.maxDrawdown.toFixed(2)}</div></div>
+          </div>`;
+        summaryEl.classList.remove('hidden');
+
+        const trades = data.tradesList.slice().sort((a, b) => a.pnl - b.pnl);
+        tbody.innerHTML = trades
+          .slice(0, 100)
+          .map((t) => {
+            const c = t.pnl >= 0 ? '#34d399' : '#f87171';
+            const sign = t.pnl >= 0 ? '+' : '';
+            return `<tr><td>${t.exitTime.slice(0, 10)}</td><td>${t.symbol}</td><td>${t.reason}</td><td>$${t.entry.toFixed(2)}</td><td>$${t.exit.toFixed(2)}</td><td style="color:${c}">${sign}$${t.pnl.toFixed(2)}</td></tr>`;
+          })
+          .join('');
+        wrapper.classList.remove('hidden');
+      } catch (error) {
+        statusEl.textContent = 'Error: ' + (error.message || String(error));
+        showToast('Backtest failed: ' + (error.message || String(error)), 'error');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
   initApp();
 });

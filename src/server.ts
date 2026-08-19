@@ -6,6 +6,7 @@ import type { NextFunction, Request, Response } from 'express';
 import express, { type Express } from 'express';
 
 import { createAccountRouter } from './routes/account.js';
+import { createBacktestRouter } from './routes/backtest.js';
 import { createBotRouter } from './routes/bot.js';
 import { createMarketRouter } from './routes/market.js';
 import { createOrdersRouter } from './routes/orders.js';
@@ -71,6 +72,7 @@ export class App {
 
   private setupRoutes(): void {
     this.app.use('/api', createAccountRouter());
+    this.app.use('/api', createBacktestRouter());
     this.app.use('/api', createOrdersRouter());
     this.app.use('/api', createMarketRouter());
     this.app.use('/api', createBotRouter());
