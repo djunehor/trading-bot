@@ -245,7 +245,7 @@ export class BotEngine {
 
   private async executeMarketOrder(symbol: string, qty: number, side: 'buy' | 'sell', reason?: string): Promise<void> {
     this.logEvent(`Placing ${side.toUpperCase()} ${qty} ${symbol} Market Order (${reason || 'N/A'})`, 'info');
-    await alpacaService.createOrder({ symbol, qty, side, type: 'market', reason });
+    await alpacaService.createOrder({ symbol, qty, side, type: 'market', time_in_force: 'day', reason });
     this.recordSell(symbol, side);
   }
 
