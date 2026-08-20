@@ -189,6 +189,42 @@ test('News Sentiment - fetchNewsForSymbols NewsAPI path', async () => {
   process.env.NODE_ENV = oldNodeEnvironment;
 });
 
+test('News Sentiment - Alpaca news filters out multi-ticker roundups when ticker not in text', async () => {
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/v1beta1/news')) {
+      return new Response(
+        JSON.stringify({
+          news: [
+            {
+              id: 101,
+              headline: "Walmart's Outlook Signals Cautious Spending Ahead; Treasury Euphoria Fades",
+              summary: 'Retail outlook softens as spending declines',
+              symbols: ['WMT', 'AAPL', 'META', 'NVDA', 'SPY'],
+            },
+            {
+              id: 102,
+              headline: 'AAPL introduces next-generation processor',
+              summary: 'Apple details revolutionary chip lineup',
+              symbols: ['AAPL', 'MSFT', 'GOOGL', 'NVDA'],
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response(JSON.stringify({}), { status: 200 });
+  };
+  await cacheService.clearAll();
+
+  const map = await newsService.fetchNewsForSymbols(['AAPL', 'META']);
+  // META should not receive article 101 because META is not mentioned in the text
+  assert.equal(map.META.length, 0);
+  // AAPL should receive article 102 because AAPL is mentioned in the headline
+  assert.equal(map.AAPL.length, 1);
+  assert.equal(map.AAPL[0].headline, 'AAPL introduces next-generation processor');
+});
+
 after(async () => {
   const { cacheService } = await import('../src/services/cacheService.js');
   await cacheService.close();

@@ -294,6 +294,87 @@ test('Trading Bot Mock - Account trading blocked handler', async () => {
   assert.ok(status.logs.some((l) => l.message.includes('Account trading is blocked')));
 });
 
+test('Trading Bot Mock - Protects index ETFs and T-bills from news panic sells', async () => {
+  let placedSellOrders: string[] = [];
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const urlString = String(input);
+    if (urlString.includes('/v2/account')) {
+      return new Response(JSON.stringify({ id: 'acc_test', status: 'ACTIVE', cash: '50000', buying_power: '50000' }), { status: 200 });
+    }
+    if (urlString.includes('/v2/positions')) {
+      return new Response(
+        JSON.stringify([
+          { symbol: 'SPY', qty: '10', avg_entry_price: '760.00', market_value: '7600.00', asset_class: 'us_equity' },
+          { symbol: 'QQQ', qty: '10', avg_entry_price: '710.00', market_value: '7100.00', asset_class: 'us_equity' },
+          { symbol: 'SGOV', qty: '50', avg_entry_price: '100.00', market_value: '5000.00', asset_class: 'us_equity' },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (urlString.includes('/v2/orders')) {
+      if (urlString.includes('status=open')) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return new Response(JSON.stringify({ id: 'ord_spy_sell', status: 'accepted' }), { status: 200 });
+    }
+    if (urlString.includes('/v1beta1/news')) {
+      return new Response(
+        JSON.stringify({
+          news: [
+            { id: 1, headline: 'SPY crashes on rate fear', summary: 'Extreme bearish drop', symbols: ['SPY'] },
+            { id: 2, headline: 'QQQ plunges on tech selloff', summary: 'Extreme bearish drop', symbols: ['QQQ'] },
+            { id: 3, headline: 'SGOV yields fall sharply', summary: 'Bearish bond note', symbols: ['SGOV'] },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    if (urlString.includes('/bars/latest')) {
+      return new Response(JSON.stringify({ bar: { c: 750, t: new Date().toISOString() } }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ id: 'ord_default', status: 'accepted' }), { status: 200 });
+  };
+
+  stockBot.start({ strategy: 'news_sentiment', intervalSeconds: 15, watchlist: ['SPY'] });
+  await new Promise((r) => setTimeout(r, 150));
+  stockBot.stop();
+
+  const status = stockBot.getStatus();
+  assert.ok(status.logs.some((l) => l.message.includes('Index / cash equivalent hold: SPY protected from news panic sell')));
+  assert.ok(!status.logs.some((l) => l.message.includes('Placing SELL 10 SPY')));
+});
+
+test('Trading Bot Mock - Enforces sell cooldown on Index Accumulation and T-Bill sweep', async () => {
+  stockBot.lastSellTimeMap['QQQ'] = Date.now() - 60_000; // Sold 1 minute ago (cooldown is 15 min)
+  stockBot.lastSellTimeMap['BIL'] = Date.now() - 60_000; // Sold 1 minute ago
+
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const urlString = String(input);
+    if (urlString.includes('/v2/account')) {
+      return new Response(JSON.stringify({ id: 'acc_test', status: 'ACTIVE', cash: '80000', equity: '100000' }), { status: 200 });
+    }
+    if (urlString.includes('/v2/positions')) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (urlString.includes('/v2/orders')) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (urlString.includes('/bars/latest')) {
+      return new Response(JSON.stringify({ bar: { c: 700, t: new Date().toISOString() } }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ id: 'ord_default', status: 'accepted' }), { status: 200 });
+  };
+
+  stockBot.start({ strategy: 'news_sentiment', intervalSeconds: 15 });
+  await new Promise((r) => setTimeout(r, 150));
+  stockBot.stop();
+
+  const status = stockBot.getStatus();
+  // Ensure no immediate buy was placed for QQQ or BIL
+  assert.ok(!status.logs.some((l) => l.message.includes('buying QQQ for long-term growth')));
+  assert.ok(!status.logs.some((l) => l.message.includes('parking in BIL for yield')));
+});
+
 after(async () => {
   const { cacheService } = await import('../src/services/cacheService.js');
   await cacheService.close();

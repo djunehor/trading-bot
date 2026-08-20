@@ -426,9 +426,18 @@ Respond STRICTLY with valid JSON in this exact format (no markdown code blocks):
     const articles = data.news || [];
 
     for (const article of articles) {
+      const headline = article.headline || '';
+      const summary = article.summary || '';
+      if (this.isMediaReleasePost(headline) || this.isMediaReleasePost(summary)) {
+        continue;
+      }
+
       const articleSymbols = article.symbols || [];
       for (const sym of symbols) {
         if (articleSymbols.includes(sym)) {
+          if (articleSymbols.length > 3 && !this.tickerInText(`${headline} ${summary}`, sym)) {
+            continue;
+          }
           resultBySymbol[sym].push(article);
         }
       }

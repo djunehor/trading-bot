@@ -737,6 +737,11 @@ export class BotEngine {
       return;
     }
 
+    if (INDEX_ACCUMULATION_TICKERS.has(topBearish.symbol) || CASH_EQUIVALENT_TICKERS.has(topBearish.symbol)) {
+      this.logEvent(`Index / cash equivalent hold: ${topBearish.symbol} protected from news panic sell`, 'info');
+      return;
+    }
+
     if (context.pendingBuyOrdersMap[topBearish.symbol]) {
       this.logEvent(`News bearish: canceling pending buy ${context.pendingBuyOrdersMap[topBearish.symbol].id}.`, 'warning');
       await alpacaService.cancelOrder(context.pendingBuyOrdersMap[topBearish.symbol].id);
@@ -914,6 +919,9 @@ export class BotEngine {
       if (now - (this.lastBuyTimeMap[ticker] || 0) < INDEX_COOLDOWN_MS) {
         continue;
       }
+      if (now - (this.lastSellTimeMap[ticker] || 0) < this.REENTRY_COOLDOWN_MS) {
+        continue;
+      }
 
       const price = (await alpacaService.getCurrentPrice(ticker)) || 0;
       if (price <= 0) {
@@ -952,6 +960,9 @@ export class BotEngine {
       }
       const now = Date.now();
       if (now - (this.lastBuyTimeMap[indexTicker] || 0) < INDEX_COOLDOWN_MS) {
+        continue;
+      }
+      if (now - (this.lastSellTimeMap[indexTicker] || 0) < this.REENTRY_COOLDOWN_MS) {
         continue;
       }
 
