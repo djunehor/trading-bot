@@ -39,11 +39,11 @@ export const TECH_MIN_CONFIDENCE = 0.7; // act only on strong technical BUY sign
 // at 0.7 silently disabled every technical sell for ~5 weeks.
 export const TECH_SELL_MIN_CONFIDENCE = 0.55;
 export const INDEX_ACCUMULATION_TICKERS = new Set(['SPY', 'QQQ']); // long-horizon index ETFs
-export const INDEX_CASH_MIN_PCT = 40; // only accumulate indexes if cash is >40% of portfolio
+export const INDEX_CASH_MIN_PCT = 30; // only accumulate indexes if cash is >30% of portfolio (was 40)
 
 // Cash-equivalent T-bill ETFs — long-term yield parking, never stop-lossed.
 export const CASH_EQUIVALENT_TICKERS = new Set(['SGOV', 'BIL', 'USFR']);
-export const TBILL_ALLOCATION_PCT = 0.2; // target: up to 20% of portfolio in T-bills
+export const TBILL_ALLOCATION_PCT = 0.15; // target: up to 15% of portfolio in T-bills (was 20)
 export const TBILL_CASH_MIN_PCT = 20; // sweep cash into T-bills only when cash > 20% of portfolio
 export const TBILL_BUY_PCT = 0.1; // deploy 10% of cash per sweep
 

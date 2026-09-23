@@ -92,7 +92,7 @@ export class BotManager {
     if (!price || price <= 0 || !availableCash || availableCash <= 0) {
       return 0;
     }
-    const cashBasedQty = Math.max(1, Math.floor((availableCash * 0.05) / price));
+    const cashBasedQty = Math.max(1, Math.floor((availableCash * 0.07) / price));
     if (assetClass === 'crypto') {
       const targetNotional = availableCash * 0.05;
       const qty = targetNotional / price;
