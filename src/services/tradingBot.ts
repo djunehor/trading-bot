@@ -799,6 +799,12 @@ export class BotEngine {
           break;
         }
       } else if (signal.action === 'SELL' && context.positionMap[signal.symbol]) {
+        // Index / cash-equivalent holdings are long-horizon — never exit them on a
+        // technical signal (mirrors the news-panic protection in actOnBearishNews).
+        if (INDEX_ACCUMULATION_TICKERS.has(signal.symbol) || CASH_EQUIVALENT_TICKERS.has(signal.symbol)) {
+          this.logEvent(`Technical sell skipped: ${signal.symbol} is a long-horizon index / cash-equivalent holding.`, 'info');
+          continue;
+        }
         await this.executeTechnicalSell(signal, context);
       }
     }
