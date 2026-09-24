@@ -14,8 +14,12 @@ import {
   MEME_PROFIT_SHARE,
   PositionRiskContext,
   PositionSnapshot,
+  REGIME_SMA_PERIOD,
   RISK_CHECK_SECONDS,
+  RISK_ON_SLEEVE_ENABLED,
+  SLEEVE_FLATTEN_ON_BREACH,
   TECH_MIN_CONFIDENCE,
+  TECH_SELL_MIN_CONFIDENCE,
   TBILL_ALLOCATION_PCT,
   TBILL_BUY_PCT,
   TBILL_CASH_MIN_PCT,
@@ -23,10 +27,12 @@ import {
   matchKey,
 } from './botConfig.js';
 import { BotManager } from './botManager.js';
+import { evaluateHighBetaExposure, isHighBeta } from './exposureGuard.js';
 import { Logger } from './logger.js';
 import { MarketClock } from './marketClock.js';
 import { newsService } from './newsService.js';
 import { portfolioService } from './portfolioService.js';
+import { marketRegimeService } from './regimeService.js';
 import { TechnicalSignal, technicalService } from './technicalService.js';
 
 interface StrategyContext {
@@ -613,6 +619,7 @@ export class BotEngine {
         `Daily loss limit hit (today realized $${todayRealizedPl.toFixed(2)} ≤ $${DAILY_LOSS_LIMIT}). Halting new buys until next day.`,
         'warning',
       );
+      await this.handleDailyLossBreach(todayRealizedPl);
       return null;
     }
 
@@ -776,7 +783,8 @@ export class BotEngine {
     let memeSpentThisCycle = 0;
 
     for (const signal of techSignals) {
-      if (signal.confidence < TECH_MIN_CONFIDENCE) {
+      const minConfidence = signal.action === 'SELL' ? TECH_SELL_MIN_CONFIDENCE : TECH_MIN_CONFIDENCE;
+      if (signal.confidence < minConfidence) {
         continue;
       }
 
@@ -848,10 +856,85 @@ export class BotEngine {
 
     this.logEvent(`Technical: ${signal.symbol} ${signal.reason} (confidence: ${signal.confidence})`, 'success');
     if (qty > 0) {
+      const sleeve = await this.evaluateSleeveGate(signal.symbol, qty * price, context);
+      if (!sleeve.allowed) {
+        this.logEvent(`Sleeve blocked ${signal.symbol}: ${sleeve.reason}`, 'warning');
+        return { control: 'continue', techBuysThisCycle, memeSpentThisCycle };
+      }
       await this.executeSmartOrder(signal.symbol, qty, 'buy', reasonNote);
       techBuysThisCycle++;
     }
     return { control: 'none', techBuysThisCycle, memeSpentThisCycle };
+  }
+
+  /**
+   * When the daily loss limit trips, optionally de-risk the high-beta sleeve.
+   * Halting new buys stops the bleeding but leaves the losing book on; this is
+   * the part that can actually reduce what is already held. Default = shadow
+   * mode (log intent, take no action) so it can be observed before enabling.
+   */
+  private async handleDailyLossBreach(todayRealizedPl: number): Promise<void> {
+    if (!RISK_ON_SLEEVE_ENABLED) {
+      return;
+    }
+    try {
+      const positions = await alpacaService.getPositions();
+      const highBeta = positions.filter((position) => isHighBeta(position.symbol) && Number(position.qty) > 0);
+      if (highBeta.length === 0) {
+        return;
+      }
+      const symbols = highBeta.map((position) => position.symbol);
+
+      if (!SLEEVE_FLATTEN_ON_BREACH) {
+        this.logEvent(
+          `Daily-loss breach ($${todayRealizedPl.toFixed(2)}): would de-risk sleeve [${symbols.join(', ')}] — flatten disabled (shadow mode).`,
+          'warning',
+        );
+        return;
+      }
+
+      await Promise.all(
+        highBeta.map(async (position): Promise<void> => {
+          try {
+            await alpacaService.closePosition(position.symbol);
+            this.logEvent(`De-risked: closed high-beta ${position.symbol} after daily-loss breach.`, 'warning');
+          } catch (error) {
+            this.logEvent(
+              `Failed to de-risk ${position.symbol}: ${error instanceof Error ? error.message : String(error)}`,
+              'error',
+            );
+          }
+        }),
+      );
+    } catch (error) {
+      this.logEvent(`De-risk sweep failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }
+
+  /**
+   * Gate for the aggressive high-beta sleeve. Strict no-op unless the sleeve is
+   * enabled AND the candidate is a high-beta name, so enabling is all-or-nothing.
+   */
+  private async evaluateSleeveGate(
+    symbol: string,
+    notional: number,
+    context: StrategyContext,
+  ): Promise<{ allowed: boolean; reason: string }> {
+    if (!RISK_ON_SLEEVE_ENABLED || this.assetClass !== 'us_equity' || !isHighBeta(symbol)) {
+      return { allowed: true, reason: 'sleeve not applicable' };
+    }
+
+    const regime = await marketRegimeService.getRegime();
+    if (!regime.riskOn) {
+      return {
+        allowed: false,
+        reason: `risk-off regime (${regime.symbol} $${regime.price.toFixed(2)} vs SMA${REGIME_SMA_PERIOD} $${regime.sma.toFixed(2)}; source=${regime.source})`,
+      };
+    }
+
+    const equity = Number.parseFloat(context.account.equity) || 0;
+    const decision = evaluateHighBetaExposure(Object.values(context.positionMap), equity, symbol, notional);
+    return { allowed: decision.allowed, reason: decision.reason };
   }
 
   private sizeVolatilePosition(

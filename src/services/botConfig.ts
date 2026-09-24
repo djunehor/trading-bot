@@ -32,7 +32,12 @@ export interface PositionRiskContext {
 export const BUY_COOLDOWN_MS = 15 * 60 * 1000; // 15-minute minimum cooldown per symbol
 export const INDEX_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4-hour cooldown for index accumulation buys
 export const RISK_CHECK_SECONDS = 30; // stop-loss / trailing-stop / take-profit runs every 30s
-export const TECH_MIN_CONFIDENCE = 0.7; // act only on strong technical signals (was 0.55 — too trigger-happy)
+export const TECH_MIN_CONFIDENCE = 0.7; // act only on strong technical BUY signals (was 0.55 — too trigger-happy)
+
+// Exits use a lower bar than entries. The sell detectors (VWAP breakdown 0.60,
+// RSI overbought 0.55) sit deliberately below the entry threshold; gating exits
+// at 0.7 silently disabled every technical sell for ~5 weeks.
+export const TECH_SELL_MIN_CONFIDENCE = 0.55;
 export const INDEX_ACCUMULATION_TICKERS = new Set(['SPY', 'QQQ']); // long-horizon index ETFs
 export const INDEX_CASH_MIN_PCT = 40; // only accumulate indexes if cash is >40% of portfolio
 
@@ -53,6 +58,31 @@ export const DAILY_LOSS_LIMIT = -300; // halt new buys after -$300 realized toda
 export const VOLATILE_ATR_PCT = 3; // ATR% > 3% per bar = volatile/meme stock
 export const RISK_BUDGET_PER_TRADE = 25; // a 1-ATR move should cost ~$25 regardless of volatility
 export const MEME_PROFIT_SHARE = 0.3; // max volatile exposure = 30% of today's realized profit
+
+// ── Risk-on sleeve ──────────────────────────────────────────────────────────
+// Re-enables aggressive high-beta momentum entries, but ONLY when the broad
+// market is in an uptrend and ONLY within hard factor-exposure caps.
+// DISABLED by default: when false, every sleeve check is a strict no-op and the
+// bot behaves exactly as it did before this feature existed.
+export const RISK_ON_SLEEVE_ENABLED = false;
+
+// High-beta / momentum-driven names. The sleeve caps aggregate exposure to
+// these regardless of how much cash is available.
+export const HIGH_BETA_TICKERS = new Set(['PLTR', 'AMD', 'COIN', 'TSLA', 'NVDA', 'MU', 'NFLX', 'META']);
+
+// Hard caps on the high-beta factor sleeve (correlation is the real risk here,
+// not any single position).
+export const MAX_HIGH_BETA_EQUITY_PCT = 0.25; // ≤25% of equity across all high-beta names
+export const MAX_HIGH_BETA_NAMES = 5; // ≤5 concurrent high-beta positions
+
+// Regime gate: the sleeve may only open when SPY trades above its N-session SMA.
+export const REGIME_SYMBOL = 'SPY';
+export const REGIME_SMA_PERIOD = 20;
+export const REGIME_CACHE_MS = 5 * 60 * 1000; // re-check at most every 5 minutes
+
+// When the daily loss limit trips, optionally flatten the high-beta sleeve.
+// Default false = "shadow mode": log what WOULD be flattened but take no action.
+export const SLEEVE_FLATTEN_ON_BREACH = false;
 
 // Mature, liquid universe — the ONLY names the bot should trade by default.
 // Long-term ETFs (S&P 500, Nasdaq) + mega/large-cap stocks. No meme stocks,

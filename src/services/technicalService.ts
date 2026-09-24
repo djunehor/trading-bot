@@ -1,6 +1,7 @@
 import { alpacaService } from './alpacaService.js';
 import { Logger } from './logger.js';
 import { MarketClock } from './marketClock.js';
+import { selectBestSignal } from './signalSelection.js';
 
 export interface Bar {
   t: string;
@@ -134,14 +135,29 @@ export class TechnicalService {
   }
 
   // Pure signal evaluation over an already-built context — reused by the backtester.
+  // Returns the strongest signal (see selectBestSignal) or a HOLD.
   evaluate(context: SignalContext): TechnicalSignal {
+    const signal = this.selectSignal(context);
+    if (signal) {
+      return signal;
+    }
+    return { symbol: context.symbol, action: 'HOLD', confidence: 0, reason: 'No clear signal', indicators: context.indicators };
+  }
+
+  /**
+   * Runs every detector and returns the strongest signal (see selectBestSignal).
+   * Order-independent, so a weak detector placed early can no longer preempt a
+   * stronger one placed later (e.g. gap 0.68 preempting momentum 0.70).
+   */
+  private selectSignal(context: SignalContext): TechnicalSignal | null {
+    const candidates: TechnicalSignal[] = [];
     for (const detect of this.signalDetectors) {
       const signal = detect(context);
       if (signal) {
-        return signal;
+        candidates.push(signal);
       }
     }
-    return { symbol: context.symbol, action: 'HOLD', confidence: 0, reason: 'No clear signal', indicators: context.indicators };
+    return selectBestSignal(candidates);
   }
 
   async analyzeWatchlist(symbols: string[]): Promise<TechnicalSignal[]> {
@@ -316,6 +332,15 @@ export class TechnicalService {
     return null;
   }
 
+  /**
+   * UTC day key for a bar, or null when the timestamp is missing/malformed.
+   * Never throws — a single bad timestamp must not abort signal detection.
+   */
+  private barDay(bar: Bar): string | null {
+    const parsed = Date.parse(bar.t);
+    return Number.isNaN(parsed) ? null : new Date(parsed).toISOString().slice(0, 10);
+  }
+
   private detectOpeningRangeBreakout(context: SignalContext): TechnicalSignal | null {
     const { bars } = context;
     const minutesSinceMidnight = MarketClock.minutesSinceMidnightNY();
@@ -325,8 +350,11 @@ export class TechnicalService {
       return null;
     }
 
-    const lastBarDay = new Date(bars[bars.length - 1].t).toISOString().slice(0, 10);
-    const todayBars = bars.filter((bar) => new Date(bar.t).toISOString().slice(0, 10) === lastBarDay);
+    const lastBarDay = this.barDay(bars[bars.length - 1]);
+    if (lastBarDay === null) {
+      return null;
+    }
+    const todayBars = bars.filter((bar) => this.barDay(bar) === lastBarDay);
     if (todayBars.length < 6) {
       return null;
     }

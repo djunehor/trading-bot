@@ -193,6 +193,17 @@ test('analyzeTechnical detects momentum breakout', async () => {
   assert.ok(sig);
 });
 
+test('analyzeTechnical tolerates bars with malformed timestamps', async () => {
+  // Regression: a bad bar timestamp used to throw from detectOpeningRangeBreakout
+  // (new Date('x').toISOString()), which aborted signal detection for the symbol.
+  const bars = mockBars(58, 100, 0);
+  bars.push({ t: 'not-a-date', o: 101, h: 102, l: 100, c: 101, v: 150 }, { t: '', o: 101, h: 102, l: 100, c: 101, v: 150 });
+  installFetchFor({ fiveMinBars: bars, quote: { bp: 101, ap: 101.02 } });
+
+  const sig = await technicalService.analyzeTechnical('AAPL');
+  assert.ok(sig === null || typeof sig.action === 'string');
+});
+
 after(async () => {
   const { cacheService } = await import('../src/services/cacheService.js');
   await cacheService.close();
