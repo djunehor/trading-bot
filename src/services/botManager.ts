@@ -2,7 +2,7 @@ import { config } from '../config/alpaca.js';
 import { database } from '../db/database.js';
 import type { BotConfig, BotStatus, TradeSignal } from '../types/alpaca.js';
 
-import { DEFAULT_CRYPTO_CONFIG, DEFAULT_STOCK_CONFIG, RISK_BUDGET_PER_TRADE } from './botConfig.js';
+import { ACTIVE_TRADE_CASH_PCT, DEFAULT_CRYPTO_CONFIG, DEFAULT_STOCK_CONFIG, RISK_BUDGET_PER_TRADE } from './botConfig.js';
 import { BotEngine } from './tradingBot.js';
 
 export const stockBot = new BotEngine('us_equity', DEFAULT_STOCK_CONFIG, database);
@@ -92,13 +92,18 @@ export class BotManager {
     if (!price || price <= 0 || !availableCash || availableCash <= 0) {
       return 0;
     }
-    const cashBasedQty = Math.max(1, Math.floor((availableCash * 0.07) / price));
+    const maxAffordableQty = Math.floor(availableCash / price);
+    if (maxAffordableQty < 1) {
+      return 0;
+    }
+    const targetQty = Math.floor((availableCash * ACTIVE_TRADE_CASH_PCT) / price);
+    const cashBasedQty = Math.max(1, targetQty);
     if (assetClass === 'crypto') {
       const targetNotional = availableCash * 0.05;
       const qty = targetNotional / price;
       const minQty = 15 / price;
       return Math.max(qty, minQty);
     }
-    return cashBasedQty;
+    return Math.min(cashBasedQty, maxAffordableQty);
   }
 }

@@ -38,14 +38,22 @@ export const TECH_MIN_CONFIDENCE = 0.7; // act only on strong technical BUY sign
 // RSI overbought 0.55) sit deliberately below the entry threshold; gating exits
 // at 0.7 silently disabled every technical sell for ~5 weeks.
 export const TECH_SELL_MIN_CONFIDENCE = 0.55;
+// Preserve at least 20% cash as seed capital to recover from drawdowns.
+export const MIN_CASH_RESERVE_PCT = 20;
+
 export const INDEX_ACCUMULATION_TICKERS = new Set(['SPY', 'QQQ']); // long-horizon index ETFs
-export const INDEX_CASH_MIN_PCT = 30; // only accumulate indexes if cash is >30% of portfolio (was 40)
+export const INDEX_ALLOCATION_PCT = 0.35; // target: up to 35% of portfolio in index ETFs
+export const INDEX_CASH_MIN_PCT = 20; // only accumulate indexes if cash is > 20% of portfolio
+export const INDEX_BUY_PCT = 0.15; // deploy 15% of deployable cash per index accumulation buy
 
 // Cash-equivalent T-bill ETFs — long-term yield parking, never stop-lossed.
 export const CASH_EQUIVALENT_TICKERS = new Set(['SGOV', 'BIL', 'USFR']);
-export const TBILL_ALLOCATION_PCT = 0.15; // target: up to 15% of portfolio in T-bills (was 20)
+export const TBILL_ALLOCATION_PCT = 0.25; // target: up to 25% of portfolio in T-bills (was 15)
 export const TBILL_CASH_MIN_PCT = 20; // sweep cash into T-bills only when cash > 20% of portfolio
-export const TBILL_BUY_PCT = 0.1; // deploy 10% of cash per sweep
+export const TBILL_BUY_PCT = 0.15; // deploy 15% of deployable cash per sweep (was 10)
+
+// Active swing trading per-trade size (fraction of deployable cash)
+export const ACTIVE_TRADE_CASH_PCT = 0.1; // deploy 10% of deployable cash per active trade (was 7% of total cash)
 
 // Stop the crypto bot from opening new BUY positions — sell-only mode.
 export const IS_DISABLE_CRYPTO_BUYS = true;

@@ -8,10 +8,13 @@ import {
   CASH_EQUIVALENT_TICKERS,
   DAILY_LOSS_LIMIT,
   INDEX_ACCUMULATION_TICKERS,
+  INDEX_ALLOCATION_PCT,
+  INDEX_BUY_PCT,
   INDEX_CASH_MIN_PCT,
   INDEX_COOLDOWN_MS,
   IS_DISABLE_CRYPTO_BUYS,
   MEME_PROFIT_SHARE,
+  MIN_CASH_RESERVE_PCT,
   PositionRiskContext,
   PositionSnapshot,
   REGIME_SMA_PERIOD,
@@ -702,6 +705,16 @@ export class BotEngine {
     );
   }
 
+  private getDeployableCash(context: StrategyContext): number {
+    const totalPortfolioValue = Number.parseFloat(context.account.equity || '0');
+    const cashOnHand = Number.parseFloat(context.account.cash || '0');
+    if (totalPortfolioValue <= 0 || cashOnHand <= 0) {
+      return 0;
+    }
+    const minReserve = totalPortfolioValue * (MIN_CASH_RESERVE_PCT / 100);
+    return Math.max(0, cashOnHand - minReserve);
+  }
+
   private async buyOnBullishNews(topBullish: StockSentiment | undefined, context: StrategyContext): Promise<void> {
     if (!topBullish || (this.assetClass === 'crypto' && IS_DISABLE_CRYPTO_BUYS)) {
       return;
@@ -716,17 +729,26 @@ export class BotEngine {
       return;
     }
 
+    const deployableCash = this.getDeployableCash(context);
+    if (deployableCash <= 0) {
+      this.logEvent(`News buy skipped for ${topBullish.symbol}: cash at or below ${MIN_CASH_RESERVE_PCT}% reserve floor.`, 'info');
+      return;
+    }
+
+    const price = (await alpacaService.getCurrentPrice(topBullish.symbol)) || 0;
+    if (price <= 0) {
+      return;
+    }
+
     this.lastBuyTimeMap[topBullish.symbol] = now;
     this.persistRiskState(topBullish.symbol);
 
-    const price = (await alpacaService.getCurrentPrice(topBullish.symbol)) || 0;
-    const availableCash = Number.parseFloat(context.account.cash || '0');
     const qty = await BotManager.calculatePositionSize(
       topBullish.symbol,
       price,
       topBullish.score,
       topBullish.headlines,
-      availableCash,
+      deployableCash,
       1,
       this.assetClass,
     );
@@ -832,17 +854,27 @@ export class BotEngine {
     if (this.assetClass === 'crypto' && signal.indicators.priceChangePct5Min <= 0.5) {
       return { control: 'continue', techBuysThisCycle, memeSpentThisCycle };
     }
+
+    const deployableCash = this.getDeployableCash(context);
+    if (deployableCash <= 0) {
+      this.logEvent(`Technical buy skipped for ${signal.symbol}: cash at or below ${MIN_CASH_RESERVE_PCT}% reserve floor.`, 'info');
+      return { control: 'continue', techBuysThisCycle, memeSpentThisCycle };
+    }
+
+    const price = (await alpacaService.getCurrentPrice(signal.symbol)) || 0;
+    if (price <= 0) {
+      return { control: 'continue', techBuysThisCycle, memeSpentThisCycle };
+    }
+
     this.lastBuyTimeMap[signal.symbol] = now;
     this.persistRiskState(signal.symbol);
 
     const reasonNote = `Technical BUY (${signal.reason})`;
-    const price = (await alpacaService.getCurrentPrice(signal.symbol)) || 0;
-    const availableCash = Number.parseFloat(context.account.cash || '0');
     const averageTrueRangePct = signal.indicators.averageTrueRangePct || 0;
 
     let qty = 0;
     if (averageTrueRangePct > VOLATILE_ATR_PCT) {
-      const sizing = this.sizeVolatilePosition(signal, price, context, memeSpentThisCycle);
+      const sizing = this.sizeVolatilePosition(signal, price, context, memeSpentThisCycle, deployableCash);
       if (sizing === null) {
         return { control: 'continue', techBuysThisCycle, memeSpentThisCycle };
       }
@@ -854,7 +886,7 @@ export class BotEngine {
         price,
         signal.confidence,
         [signal.reason],
-        availableCash,
+        deployableCash,
         1,
         this.assetClass,
       );
@@ -948,13 +980,19 @@ export class BotEngine {
     price: number,
     context: StrategyContext,
     memeSpentThisCycle: number,
+    deployableCash: number,
   ): { qty: number; memeSpentThisCycle: number } | null {
     const averageTrueRangePct = signal.indicators.averageTrueRangePct || 0;
     if (context.memeBudget <= 0) {
       this.logEvent(`Skip ${signal.symbol}: volatile (ATR ${averageTrueRangePct}%) but no realized profit budget`, 'info');
       return null;
     }
-    const qty = BotManager.volatilitySizedQty(price, averageTrueRangePct);
+    let qty = BotManager.volatilitySizedQty(price, averageTrueRangePct);
+    const maxDeployableQty = Math.floor(deployableCash / price);
+    qty = Math.min(qty, maxDeployableQty);
+    if (qty < 1) {
+      return null;
+    }
     const notional = qty * price;
     if (memeSpentThisCycle + notional > context.memeBudget) {
       this.logEvent(
@@ -990,21 +1028,32 @@ export class BotEngine {
     const totalPortfolioValue = Number.parseFloat(context.account.equity || '0');
     const cashOnHand = Number.parseFloat(context.account.cash || '0');
     const cashPct = totalPortfolioValue > 0 ? (cashOnHand / totalPortfolioValue) * 100 : 0;
+    const deployableCash = this.getDeployableCash(context);
 
     const tbillValue = Object.values(context.positionMap)
       .filter((position) => CASH_EQUIVALENT_TICKERS.has(position.symbol))
       .reduce((sum, position) => sum + (Number.parseFloat(position.market_value) || 0), 0);
     const tbillPct = totalPortfolioValue > 0 ? (tbillValue / totalPortfolioValue) * 100 : 0;
 
-    if (cashPct < TBILL_CASH_MIN_PCT || tbillPct >= TBILL_ALLOCATION_PCT * 100) {
+    if (cashPct <= TBILL_CASH_MIN_PCT || deployableCash <= 0 || tbillPct >= TBILL_ALLOCATION_PCT * 100) {
       return;
     }
 
-    for (const ticker of CASH_EQUIVALENT_TICKERS) {
-      if (context.positionMap[ticker]) {
-        continue;
-      }
-      const now = Date.now();
+    const remainingTbillCapacity = totalPortfolioValue * TBILL_ALLOCATION_PCT - tbillValue;
+    if (remainingTbillCapacity <= 0) {
+      return;
+    }
+
+    const candidates = Array.from(CASH_EQUIVALENT_TICKERS)
+      .map((ticker) => {
+        const pos = context.positionMap[ticker];
+        const val = pos ? Number.parseFloat(pos.market_value) || 0 : 0;
+        return { ticker, val };
+      })
+      .sort((a, b) => a.val - b.val);
+
+    const now = Date.now();
+    for (const { ticker } of candidates) {
       if (now - (this.lastBuyTimeMap[ticker] || 0) < INDEX_COOLDOWN_MS) {
         continue;
       }
@@ -1017,14 +1066,15 @@ export class BotEngine {
         continue;
       }
 
-      const qty = Math.floor((cashOnHand * TBILL_BUY_PCT) / price);
+      const spend = Math.min(deployableCash * TBILL_BUY_PCT, remainingTbillCapacity, deployableCash);
+      const qty = Math.floor(spend / price);
       if (qty < 1) {
         continue;
       }
 
       this.lastBuyTimeMap[ticker] = now;
       this.persistRiskState(ticker);
-      const reasonNote = `T-bill sweep: ${cashPct.toFixed(0)}% cash idle, parking in ${ticker} for yield`;
+      const reasonNote = `T-bill sweep: ${cashPct.toFixed(0)}% cash (${tbillPct.toFixed(0)}% in T-bills, target ≤${(TBILL_ALLOCATION_PCT * 100).toFixed(0)}%), parking in ${ticker} for yield`;
       this.logEvent(reasonNote, 'success');
       await this.executeSmartOrder(ticker, qty, 'buy', reasonNote);
       break; // max 1 T-bill buy per cycle
@@ -1039,15 +1089,32 @@ export class BotEngine {
     const totalPortfolioValue = Number.parseFloat(context.account.equity || '0');
     const cashOnHand = Number.parseFloat(context.account.cash || '0');
     const cashPct = totalPortfolioValue > 0 ? (cashOnHand / totalPortfolioValue) * 100 : 0;
-    if (cashPct < INDEX_CASH_MIN_PCT) {
+    const deployableCash = this.getDeployableCash(context);
+
+    const indexValue = Object.values(context.positionMap)
+      .filter((position) => INDEX_ACCUMULATION_TICKERS.has(position.symbol))
+      .reduce((sum, position) => sum + (Number.parseFloat(position.market_value) || 0), 0);
+    const indexPct = totalPortfolioValue > 0 ? (indexValue / totalPortfolioValue) * 100 : 0;
+
+    if (cashPct <= INDEX_CASH_MIN_PCT || deployableCash <= 0 || indexPct >= INDEX_ALLOCATION_PCT * 100) {
       return;
     }
 
-    for (const indexTicker of INDEX_ACCUMULATION_TICKERS) {
-      if (context.positionMap[indexTicker]) {
-        continue;
-      }
-      const now = Date.now();
+    const remainingIndexCapacity = totalPortfolioValue * INDEX_ALLOCATION_PCT - indexValue;
+    if (remainingIndexCapacity <= 0) {
+      return;
+    }
+
+    const candidates = Array.from(INDEX_ACCUMULATION_TICKERS)
+      .map((ticker) => {
+        const pos = context.positionMap[ticker];
+        const val = pos ? Number.parseFloat(pos.market_value) || 0 : 0;
+        return { ticker, val };
+      })
+      .sort((a, b) => a.val - b.val);
+
+    const now = Date.now();
+    for (const { ticker: indexTicker } of candidates) {
       if (now - (this.lastBuyTimeMap[indexTicker] || 0) < INDEX_COOLDOWN_MS) {
         continue;
       }
@@ -1060,14 +1127,15 @@ export class BotEngine {
         continue;
       }
 
-      const qty = Math.floor((cashOnHand * 0.15) / price);
+      const spend = Math.min(deployableCash * INDEX_BUY_PCT, remainingIndexCapacity, deployableCash);
+      const qty = Math.floor(spend / price);
       if (qty < 1) {
         continue;
       }
 
       this.lastBuyTimeMap[indexTicker] = now;
       this.persistRiskState(indexTicker);
-      const reasonNote = `Index Accumulation: ${cashPct.toFixed(0)}% cash idle, buying ${indexTicker} for long-term growth`;
+      const reasonNote = `Index Accumulation: ${cashPct.toFixed(0)}% cash (${indexPct.toFixed(0)}% in index, target ≤${(INDEX_ALLOCATION_PCT * 100).toFixed(0)}%), buying ${indexTicker} for long-term growth`;
       this.logEvent(reasonNote, 'success');
       await this.executeSmartOrder(indexTicker, qty, 'buy', reasonNote);
       break; // max 1 index buy per cycle
