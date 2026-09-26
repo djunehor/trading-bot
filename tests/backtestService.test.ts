@@ -44,26 +44,41 @@ test('summarize aggregates trades across results', () => {
   const results: BacktestResult[] = [
     {
       symbol: 'AAPL',
+      initialCash: 100_000,
       finalEquity: 100_000,
       maxDrawdown: 5,
+      buyAndHoldReturnPct: 10,
+      buyAndHoldFinalEquity: 110_000,
+      startPrice: 100,
+      endPrice: 110,
       trades: [
-        { symbol: 'AAPL', entry: 10, exit: 11, qty: 1, pnl: 1, reason: 'a', entryTime: '', exitTime: '' },
-        { symbol: 'AAPL', entry: 10, exit: 9, qty: 1, pnl: -1, reason: 'b', entryTime: '', exitTime: '' },
+        { symbol: 'AAPL', entry: 10, exit: 11, qty: 1, pnl: 1, pnlPct: 10, reason: 'a', entryTime: '', exitTime: '' },
+        { symbol: 'AAPL', entry: 10, exit: 9, qty: 1, pnl: -1, pnlPct: -10, reason: 'b', entryTime: '', exitTime: '' },
       ],
     },
     {
       symbol: 'MSFT',
+      initialCash: 100_000,
       finalEquity: 100_000,
       maxDrawdown: 3,
-      trades: [{ symbol: 'MSFT', entry: 10, exit: 12, qty: 1, pnl: 2, reason: 'c', entryTime: '', exitTime: '' }],
+      buyAndHoldReturnPct: 20,
+      buyAndHoldFinalEquity: 120_000,
+      startPrice: 200,
+      endPrice: 240,
+      trades: [{ symbol: 'MSFT', entry: 10, exit: 12, qty: 1, pnl: 2, pnlPct: 20, reason: 'c', entryTime: '', exitTime: '' }],
     },
   ];
 
-  const summary = summarize(results);
+  const summary = summarize(results, 200_000);
   assert.equal(summary.trades, 3);
   assert.equal(summary.wins, 2);
   assert.equal(summary.losses, 1);
   assert.equal(summary.totalPnl, 2);
+  assert.equal(summary.initialCapital, 200_000);
+  assert.equal(summary.finalEquity, 200_002);
+  assert.equal(summary.returnPct, 0.001);
+  assert.equal(summary.buyAndHoldReturnPct, 15);
+  assert.equal(summary.buyAndHoldFinalEquity, 230_000);
   assert.equal(summary.maxDrawdown, 5);
   assert.ok(Math.abs(summary.winRate - 66.666) < 0.01);
   assert.equal(summary.avgWin, 1.5);
@@ -75,7 +90,30 @@ test('summarize handles an empty result set', () => {
   assert.equal(summary.trades, 0);
   assert.equal(summary.winRate, 0);
   assert.equal(summary.avgWin, 0);
+  assert.equal(summary.initialCapital, 100_000);
   assert.equal(summary.finalEquity, 100_000);
+  assert.equal(summary.returnPct, 0);
+});
+
+test('runBacktest respects custom initial capital and 100% position allocation', async () => {
+  const fiveMin = [
+    ...Array.from({ length: 60 }, (_, i) => bar(i, 100 + i * 0.1)),
+    ...Array.from({ length: 20 }, (_, i) => bar(60 + i, 105.9 + (i + 1) * 0.5)),
+  ];
+  const oneDay = Array.from({ length: 5 }, (_, i) => bar(i, 100 + i * 0.1));
+  mockAlpaca(fiveMin, oneDay);
+
+  const [result] = await runBacktest(['AAPL'], '2026-01-05', '2026-01-06', {
+    startingCash: 50_000,
+    positionSizePct: 1.0,
+  });
+
+  assert.equal(result.initialCash, 50_000);
+  assert.ok(result.trades.length >= 1);
+  // With 100% allocation on $50k and price ~$106, qty should be ~470 shares (not small ~23 shares)
+  assert.ok(result.trades[0].qty > 400);
+  assert.ok(typeof result.buyAndHoldReturnPct === 'number');
+  assert.ok(result.buyAndHoldFinalEquity > 0);
 });
 
 test('runBacktest buys on an uptrend and closes out', async () => {

@@ -120,6 +120,26 @@ test('UI TypeScript - Verify Market Clock elements and countdown renderers', () 
   assert.ok(jsContent.includes('function startMarketCountdown'), 'startMarketCountdown defined in app.js');
 });
 
+test('UI TypeScript - Verify Strategy Backtest elements and configurable controls', () => {
+  const htmlPath = path.join(__dirname, '../public/index.html');
+  const htmlContent = fs.readFileSync(htmlPath, 'utf8');
+  const jsPath = path.join(__dirname, '../public/app.js');
+  const jsContent = fs.readFileSync(jsPath, 'utf8');
+
+  // Verify form inputs
+  assert.ok(htmlContent.includes('id="backtestCapital"'), 'Starting Capital input exists');
+  assert.ok(htmlContent.includes('id="backtestAllocation"'), 'Position Size allocation input exists');
+  assert.ok(htmlContent.includes('id="backtestFilter"'), 'Filter dropdown exists');
+  assert.ok(htmlContent.includes('id="backtestTable"'), 'Backtest table exists');
+  assert.ok(htmlContent.includes('data-col="pnlPct"'), 'Return % column exists in table');
+
+  // Verify app.js backtest logic
+  assert.ok(jsContent.includes('initialCapital'), 'app.js sends initialCapital');
+  assert.ok(jsContent.includes('positionSizePct'), 'app.js sends positionSizePct');
+  assert.ok(jsContent.includes('Buy & Hold Benchmark'), 'app.js renders Buy & Hold Benchmark');
+  assert.ok(jsContent.includes('currentSort'), 'app.js supports sort state');
+});
+
 after(async () => {
   const { cacheService } = await import('../src/services/cacheService.js');
   await cacheService.close();
