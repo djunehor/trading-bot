@@ -368,9 +368,17 @@
           </div>
         </div>
         <form id="backtestForm" style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:1rem;">
-          <div class="form-group" style="flex:1; min-width:220px;">
+          <div class="form-group" style="flex:1; min-width:200px;">
             <label for="backtestSymbols">Symbols (comma-separated)</label>
             <input type="text" id="backtestSymbols" placeholder="AAPL, NVDA, TSLA" required>
+          </div>
+          <div class="form-group" style="width:150px;">
+            <label for="backtestCapital">Starting Capital ($)</label>
+            <input type="number" id="backtestCapital" value="100000" min="10" step="1000" required>
+          </div>
+          <div class="form-group" style="width:140px;">
+            <label for="backtestAllocation">Position Size (%)</label>
+            <input type="number" id="backtestAllocation" value="100" min="1" max="100" step="1" required>
           </div>
           <div class="form-group">
             <label for="backtestStart">Start date</label>
@@ -382,18 +390,30 @@
           </div>
           <button type="submit" id="runBacktestBtn" class="btn btn-primary">Run Backtest</button>
         </form>
-        <div id="backtestStatus" class="text-muted" style="margin-bottom:1rem;">Enter a date range and symbols, then run.</div>
+        <div id="backtestStatus" class="text-muted" style="margin-bottom:1rem;">Enter starting capital, position size, symbols, and dates, then run.</div>
         <div id="backtestSummary" class="hidden"></div>
-        <div class="table-wrapper hidden" id="backtestTradesWrapper">
-          <table class="data-table">
+        <div class="table-wrapper hidden" id="backtestTradesWrapper" style="margin-top:1.25rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:8px;">
+            <span id="backtestTradeCount" class="text-muted" style="font-size:0.85rem;">Showing trades</span>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <label for="backtestFilter" style="font-size:0.8rem; margin:0;" class="text-muted">Filter:</label>
+              <select id="backtestFilter" style="padding:4px 8px; font-size:0.8rem; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;">
+                <option value="all">All Trades</option>
+                <option value="wins">Winning Only</option>
+                <option value="losses">Losing Only</option>
+              </select>
+            </div>
+          </div>
+          <table class="data-table" id="backtestTable">
             <thead>
               <tr>
-                <th>Exit Date</th>
-                <th>Symbol</th>
-                <th>Reason</th>
-                <th>Entry</th>
-                <th>Exit</th>
-                <th>P/L</th>
+                <th class="sortable" data-col="exitTime">Exit Date <span class="sort-icon">▼</span></th>
+                <th class="sortable" data-col="symbol">Symbol <span class="sort-icon"></span></th>
+                <th class="sortable" data-col="reason">Reason <span class="sort-icon"></span></th>
+                <th class="sortable" data-col="entry">Entry <span class="sort-icon"></span></th>
+                <th class="sortable" data-col="exit">Exit <span class="sort-icon"></span></th>
+                <th class="sortable" data-col="pnlPct">Return % <span class="sort-icon"></span></th>
+                <th class="sortable" data-col="pnl">P/L ($) <span class="sort-icon"></span></th>
               </tr>
             </thead>
             <tbody id="backtestTradesBody"></tbody>

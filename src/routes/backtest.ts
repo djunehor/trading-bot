@@ -8,7 +8,7 @@ export function createBacktestRouter(): Router {
 
   router.post('/backtest', async (request: Request, response: Response): Promise<void> => {
     try {
-      const { symbols, start, end } = request.body;
+      const { symbols, start, end, initialCapital, positionSizePct } = request.body;
       if (!symbols || !start || !end) {
         response.status(400).json({ error: 'symbols, start, and end are required.' });
         return;
@@ -26,8 +26,19 @@ export function createBacktestRouter(): Router {
         return;
       }
 
-      const results = await runBacktest(symbolList, toIsoDay(String(start)), toIsoDay(String(end)));
-      response.json(summarize(results));
+      const capital = initialCapital !== undefined && !isNaN(Number(initialCapital))
+        ? Math.max(10, Number(initialCapital))
+        : undefined;
+
+      const allocation = positionSizePct !== undefined && !isNaN(Number(positionSizePct))
+        ? Math.min(1, Math.max(0.01, Number(positionSizePct) > 1 ? Number(positionSizePct) / 100 : Number(positionSizePct)))
+        : undefined;
+
+      const results = await runBacktest(symbolList, toIsoDay(String(start)), toIsoDay(String(end)), {
+        startingCash: capital,
+        positionSizePct: allocation,
+      });
+      response.json(summarize(results, capital));
     } catch (error) {
       sendError(response, error);
     }
