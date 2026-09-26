@@ -24,10 +24,10 @@ test('volatilitySizedQty sizes so 1-ATR move = $25 risk', () => {
   assert.equal(BotManager.volatilitySizedQty(100, 0), 0);
 });
 
-test('calculatePositionSize stock uses 7% of cash', async () => {
+test('calculatePositionSize stock uses 10% of cash', async () => {
   const qty = await BotManager.calculatePositionSize('AAPL', 100, 0, [], 100_000, 0, 'us_equity');
-  // 7% of 100000 = 7000, / 100 = 70 shares
-  assert.equal(qty, 70);
+  // 10% of 100000 = 10000, / 100 = 100 shares
+  assert.equal(qty, 100);
 });
 
 test('calculatePositionSize crypto uses 5% notional', async () => {

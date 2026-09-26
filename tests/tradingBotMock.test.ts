@@ -375,6 +375,84 @@ test('Trading Bot Mock - Enforces sell cooldown on Index Accumulation and T-Bill
   assert.ok(!status.logs.some((l) => l.message.includes('parking in BIL for yield')));
 });
 
+test('Trading Bot Mock - Preserves 20% minimum cash reserve (no buys placed when cash <= 20%)', async () => {
+  stockBot.lastBuyTimeMap['SPY'] = 0;
+  stockBot.lastBuyTimeMap['SGOV'] = 0;
+  stockBot.lastSellTimeMap['SPY'] = 0;
+  stockBot.lastSellTimeMap['SGOV'] = 0;
+
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const urlString = String(input);
+    if (urlString.includes('/v2/account')) {
+      // 20% cash exactly ($20,000 / $100,000)
+      return new Response(JSON.stringify({ id: 'acc_test', status: 'ACTIVE', cash: '20000', equity: '100000' }), { status: 200 });
+    }
+    if (urlString.includes('/v2/positions')) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (urlString.includes('/v2/orders')) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (urlString.includes('/bars/latest')) {
+      return new Response(JSON.stringify({ bar: { c: 500, t: new Date().toISOString() } }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ id: 'ord_default', status: 'accepted' }), { status: 200 });
+  };
+
+  stockBot.start({ strategy: 'news_sentiment', intervalSeconds: 15 });
+  await new Promise((r) => setTimeout(r, 150));
+  stockBot.stop();
+
+  const status = stockBot.getStatus();
+  assert.ok(!status.logs.some((l) => l.message.includes('buying SPY')));
+  assert.ok(!status.logs.some((l) => l.message.includes('parking in SGOV')));
+});
+
+test('Trading Bot Mock - Re-ups Index Accumulation and T-Bill sweep when excess cash > 20% reserve', async () => {
+  stockBot.lastBuyTimeMap['SPY'] = 0;
+  stockBot.lastBuyTimeMap['QQQ'] = 0;
+  stockBot.lastBuyTimeMap['SGOV'] = 0;
+  stockBot.lastBuyTimeMap['BIL'] = 0;
+  stockBot.lastBuyTimeMap['USFR'] = 0;
+  stockBot.lastSellTimeMap['SPY'] = 0;
+  stockBot.lastSellTimeMap['QQQ'] = 0;
+  stockBot.lastSellTimeMap['SGOV'] = 0;
+  stockBot.lastSellTimeMap['BIL'] = 0;
+  stockBot.lastSellTimeMap['USFR'] = 0;
+
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const urlString = String(input);
+    if (urlString.includes('/v2/account')) {
+      // 60% cash ($60,000 / $100,000) -> deployable cash is $40,000
+      return new Response(JSON.stringify({ id: 'acc_test', status: 'ACTIVE', cash: '60000', equity: '100000' }), { status: 200 });
+    }
+    if (urlString.includes('/v2/positions')) {
+      return new Response(
+        JSON.stringify([
+          { symbol: 'SPY', qty: '10', market_value: '5000', current_price: '500' },
+          { symbol: 'SGOV', qty: '50', market_value: '5000', current_price: '100' },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (urlString.includes('/v2/orders')) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (urlString.includes('/quotes/latest')) {
+      return new Response(JSON.stringify({ quote: { bp: 100, ap: 100 } }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ id: 'ord_buy_1', status: 'accepted' }), { status: 200 });
+  };
+
+  stockBot.start({ strategy: 'news_sentiment', intervalSeconds: 15 });
+  await new Promise((r) => setTimeout(r, 150));
+  stockBot.stop();
+
+  const status = stockBot.getStatus();
+  // Should trigger T-bill sweep and index accumulation
+  assert.ok(status.logs.some((l) => l.message.includes('T-bill sweep') || l.message.includes('Index Accumulation')));
+});
+
 after(async () => {
   const { cacheService } = await import('../src/services/cacheService.js');
   await cacheService.close();
