@@ -128,6 +128,7 @@ test('UI TypeScript - Verify Strategy Backtest elements and configurable control
 
   // Verify form inputs
   assert.ok(htmlContent.includes('id="backtestCapital"'), 'Starting Capital input exists');
+  assert.ok(htmlContent.includes('id="backtestCapital" value="100000" min="1" step="any"'), 'backtestCapital uses step="any"');
   assert.ok(htmlContent.includes('id="backtestAllocation"'), 'Position Size allocation input exists');
   assert.ok(htmlContent.includes('id="backtestFilter"'), 'Filter dropdown exists');
   assert.ok(htmlContent.includes('id="backtestTable"'), 'Backtest table exists');
