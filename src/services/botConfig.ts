@@ -23,6 +23,7 @@ export interface PositionSnapshot {
 }
 
 export interface PositionRiskContext {
+  pendingOrdersMap: Record<string, AlpacaOrder>;
   pendingSellOrdersMap: Record<string, AlpacaOrder>;
   expiredSellOrdersMap: Record<string, boolean>;
   isMarketOpen: boolean;

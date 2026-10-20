@@ -82,7 +82,210 @@ body {
   color: var(--text-muted);
 }
 
-/* Mode Switch */
+/* Alpaca Account Switcher Dropdown (Matches Screenshot) */
+.account-switcher-container {
+  position: relative;
+  display: inline-block;
+  user-select: none;
+}
+
+.account-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-main);
+  text-align: left;
+}
+
+.account-dropdown-trigger:hover {
+  border-color: #64748b;
+  background: var(--bg-card-hover);
+}
+
+.alpaca-badge {
+  width: 32px;
+  height: 32px;
+  background-color: #f5c518;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.account-trigger-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.account-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #ffffff;
+}
+
+.account-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.dropdown-chevron {
+  margin-left: 6px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.account-dropdown-trigger[aria-expanded="true"] .dropdown-chevron {
+  transform: rotate(180deg);
+}
+
+/* Dropdown Menu Popover */
+.account-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+  padding: 12px;
+  z-index: 1000;
+  animation: dropdownSlideIn 0.15s ease-out;
+}
+
+@keyframes dropdownSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tabs: Live / Paper (Pill Segmented Switcher) */
+.account-type-tabs {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: 9999px;
+  padding: 3px;
+  margin-bottom: 10px;
+}
+
+.tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 9999px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.tab-btn.active-tab {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.tab-btn:hover:not(.active-tab) {
+  color: #0f172a;
+}
+
+/* Accounts List */
+.accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.account-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.account-item:hover {
+  background-color: #f8fafc;
+}
+
+/* Selected state exactly matches user's screenshot */
+.account-item.selected {
+  background-color: #fefce8;
+  border-color: #fef08a;
+}
+
+.account-item-left {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.account-item-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+
+.account-item-sub {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.account-item-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+
+.account-item-equity {
+  font-weight: 700;
+  font-size: 0.95rem;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #0f172a;
+}
+
+.account-item-change {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.account-item-change.positive {
+  color: #10b981;
+}
+
+.account-item-change.negative {
+  color: #ef4444;
+}
+
+.account-item-change.neutral {
+  color: #64748b;
+}
+
+/* Legacy Mode Switch (Maintained for Compatibility & Testing) */
 .mode-switch-container {
   display: flex;
   align-items: center;

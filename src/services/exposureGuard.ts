@@ -50,7 +50,7 @@ export function evaluateHighBetaExposure(
   // Dedupe by matchKey: buildPositionMap stores each position under two keys.
   const heldByKey = new Map<string, number>();
   for (const position of positions) {
-    if (isHighBeta(position.symbol) && Number(position.qty) !== 0) {
+    if (isHighBeta(position.symbol) && Number(position.qty) > 0) {
       heldByKey.set(matchKey(position.symbol), Math.abs(Number(position.market_value) || 0));
     }
   }

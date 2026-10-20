@@ -64,9 +64,10 @@ interface RiskStateRow {
 export class Database {
   private readonly db: BetterSqlite3.Database;
 
-  constructor(dbPath = path.join(dataDir, 'trading.db')) {
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+  constructor(dbPath = process.env.DB_PATH || path.join(dataDir, 'trading.db')) {
+    const targetDir = path.dirname(dbPath);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
     }
 
     this.db = new BetterSqlite3(dbPath);

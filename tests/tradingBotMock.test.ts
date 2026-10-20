@@ -453,6 +453,90 @@ test('Trading Bot Mock - Re-ups Index Accumulation and T-Bill sweep when excess 
   assert.ok(status.logs.some((l) => l.message.includes('T-bill sweep') || l.message.includes('Index Accumulation')));
 });
 
+test('Trading Bot Mock - Negative (short) position guard skips sell exits', async () => {
+  let placedSellOrders: any[] = [];
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const urlString = String(input);
+    if (urlString.includes('/v2/account')) {
+      return new Response(JSON.stringify({ id: 'acc_test', status: 'ACTIVE', cash: '100000', equity: '100000' }), { status: 200 });
+    }
+    if (urlString.includes('/v2/positions')) {
+      // UNH is negative (short 528 shares), with price higher than entry (which would look like a gain to a long calculation)
+      return new Response(
+        JSON.stringify([
+          { symbol: 'UNH', qty: '-528', avg_entry_price: '386.00', current_price: '410.00', asset_class: 'us_equity' },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (urlString.includes('/v2/orders') && (!init || init.method !== 'POST')) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (urlString.includes('/v2/orders') && init?.method === 'POST') {
+      const body = JSON.parse(String(init.body));
+      placedSellOrders.push(body);
+      return new Response(JSON.stringify({ id: 'ord_short_sell', status: 'accepted' }), { status: 200 });
+    }
+    return new Response(JSON.stringify([]), { status: 200 });
+  };
+
+  stockBot.start({ strategy: 'momentum', intervalSeconds: 15, takeProfitPercent: 5 });
+  await new Promise((r) => setTimeout(r, 200));
+  stockBot.stop();
+
+  const status = stockBot.getStatus();
+  // Must NOT place any sell order on a short position
+  assert.equal(placedSellOrders.length, 0, 'No sell orders should be placed on a negative position');
+  assert.ok(
+    status.logs.some((l) => l.message.includes('Negative (short) position detected for UNH')),
+    'Expected critical log detecting negative position',
+  );
+});
+
+test('Trading Bot Mock - Open BUY order skips risk exits to avoid wash trade', async () => {
+  let placedSellOrders: any[] = [];
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const urlString = String(input);
+    if (urlString.includes('/v2/account')) {
+      return new Response(JSON.stringify({ id: 'acc_test', status: 'ACTIVE', cash: '100000', equity: '100000' }), { status: 200 });
+    }
+    if (urlString.includes('/v2/positions')) {
+      return new Response(
+        JSON.stringify([
+          { symbol: 'AAPL', qty: '10', avg_entry_price: '100.00', current_price: '120.00', asset_class: 'us_equity' },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (urlString.includes('/v2/orders') && (!init || init.method !== 'POST')) {
+      // Pending BUY order exists
+      return new Response(
+        JSON.stringify([
+          { id: 'pending_buy_1', symbol: 'AAPL', side: 'buy', qty: '10', status: 'accepted', type: 'market' },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (urlString.includes('/v2/orders') && init?.method === 'POST') {
+      const body = JSON.parse(String(init.body));
+      placedSellOrders.push(body);
+      return new Response(JSON.stringify({ id: 'ord_test_sell', status: 'accepted' }), { status: 200 });
+    }
+    return new Response(JSON.stringify([]), { status: 200 });
+  };
+
+  stockBot.start({ strategy: 'momentum', intervalSeconds: 15, takeProfitPercent: 5 });
+  await new Promise((r) => setTimeout(r, 200));
+  stockBot.stop();
+
+  const status = stockBot.getStatus();
+  assert.equal(placedSellOrders.length, 0, 'No opposite-side sell order should be placed when a buy order is pending');
+  assert.ok(
+    status.logs.some((l) => l.message.includes('Open BUY order pending for AAPL')),
+    'Expected log skipping risk exits due to open BUY order',
+  );
+});
+
 after(async () => {
   const { cacheService } = await import('../src/services/cacheService.js');
   await cacheService.close();

@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import { Logger } from '../services/logger.js';
 import type { AccountMode, AlpacaCredentials } from '../types/alpaca.js';
 
-dotenv.config();
+dotenv.config({ path: process.env.ENV_FILE || undefined });
 
 const ENDPOINTS = {
   paper: 'https://paper-api.alpaca.markets',

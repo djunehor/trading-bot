@@ -287,6 +287,7 @@ export class BotEngine {
       }
 
       const context: PositionRiskContext = {
+        pendingOrdersMap: this.buildPendingOrderMap(openOrders),
         pendingSellOrdersMap: this.buildPendingSellMap(openOrders),
         expiredSellOrdersMap: this.buildExpiredSellMap(closedOrders),
         isMarketOpen: MarketClock.isMarketOpenOrOpeningSoon(this.assetClass),
@@ -348,6 +349,15 @@ export class BotEngine {
       this.logEvent(`Pre-open sweep error: ${message}`, 'error');
       return false;
     }
+  }
+
+  private buildPendingOrderMap(openOrders: AlpacaOrder[]): Record<string, AlpacaOrder> {
+    const map: Record<string, AlpacaOrder> = {};
+    for (const order of openOrders) {
+      map[order.symbol] = order;
+      map[matchKey(order.symbol)] = order;
+    }
+    return map;
   }
 
   private buildPendingSellMap(openOrders: AlpacaOrder[]): Record<string, AlpacaOrder> {
@@ -413,16 +423,24 @@ export class BotEngine {
   }
 
   private async evaluatePosition(position: AlpacaPosition, context: PositionRiskContext): Promise<void> {
+    const rawQty = Number.parseFloat(position.qty);
+    if (!Number.isFinite(rawQty) || rawQty <= 0) {
+      if (rawQty < 0) {
+        this.logEvent(
+          `[CRITICAL] Negative (short) position detected for ${position.symbol} (${rawQty} shares). Long-only bot cannot manage short positions via sell exits.`,
+          'error',
+        );
+      }
+      return;
+    }
+
     // Use Alpaca's real-time position price first; fall back to bar close for test mocks.
     const currentPrice = Number(position.current_price) || (await alpacaService.getLatestBar(position.symbol))?.c || 0;
     if (!currentPrice) {
       return;
     }
 
-    const qty = Math.abs(Number.parseFloat(position.qty));
-    if (qty === 0) {
-      return;
-    }
+    const qty = rawQty;
 
     if (CASH_EQUIVALENT_TICKERS.has(position.symbol)) {
       if (context.shouldLog) {
@@ -440,7 +458,7 @@ export class BotEngine {
       );
     }
 
-    if (await this.handlePendingSell(position, context)) {
+    if (await this.handlePendingOrder(position, context)) {
       return;
     }
     if (!context.isMarketOpen && this.assetClass !== 'crypto') {
@@ -465,17 +483,25 @@ export class BotEngine {
     await this.tryTakeProfit(snapshot);
   }
 
-  // Returns true when we should skip to the next position (a sell is already pending).
-  private async handlePendingSell(position: AlpacaPosition, context: PositionRiskContext): Promise<boolean> {
-    const pending = context.pendingSellOrdersMap[position.symbol];
-    if (!pending) {
+  // Returns true when we should skip to the next position (an order is already pending).
+  private async handlePendingOrder(position: AlpacaPosition, context: PositionRiskContext): Promise<boolean> {
+    const pendingOrder = context.pendingOrdersMap[position.symbol];
+    if (!pendingOrder) {
       return false;
+    }
+
+    if (pendingOrder.side !== 'sell') {
+      this.logEvent(
+        `Open ${pendingOrder.side.toUpperCase()} order pending for ${position.symbol} (order ${pendingOrder.id.slice(0, 8)}...) — skipping risk exits to avoid order conflict/wash trade.`,
+        'info',
+      );
+      return true;
     }
 
     if (MarketClock.isExtendedHours() || this.assetClass === 'crypto') {
       if (context.shouldLog) {
         this.logEvent(
-          `Sell already pending for ${position.symbol} (order ${pending.id.slice(0, 8)}...) — waiting for fill or expiry.`,
+          `Sell already pending for ${position.symbol} (order ${pendingOrder.id.slice(0, 8)}...) — waiting for fill or expiry.`,
           'info',
         );
       }
@@ -483,9 +509,9 @@ export class BotEngine {
     }
 
     try {
-      await alpacaService.cancelOrder(pending.id);
+      await alpacaService.cancelOrder(pendingOrder.id);
       this.logEvent(
-        `Canceled stale pending sell for ${position.symbol} (order ${pending.id.slice(0, 8)}...) to re-exit at market.`,
+        `Canceled stale pending sell for ${position.symbol} (order ${pendingOrder.id.slice(0, 8)}...) to re-exit at market.`,
         'warning',
       );
     } catch {
@@ -509,7 +535,7 @@ export class BotEngine {
   }
 
   private async tryScaleOut(snapshot: PositionSnapshot): Promise<boolean> {
-    if (snapshot.gainPercent < snapshot.scaleOutThreshold || this.scaledOutMap[snapshot.symbol] || snapshot.qty < 2) {
+    if (snapshot.qty <= 0 || snapshot.gainPercent < snapshot.scaleOutThreshold || this.scaledOutMap[snapshot.symbol] || snapshot.qty < 2) {
       return false;
     }
     const scaleQty = Math.floor(snapshot.qty / 2);
@@ -564,6 +590,9 @@ export class BotEngine {
   }
 
   private async sellFullPosition(snapshot: PositionSnapshot, reasonNote: string): Promise<void> {
+    if (snapshot.qty <= 0) {
+      return;
+    }
     delete this.highWaterMarkMap[snapshot.symbol];
     delete this.peakStallCountMap[snapshot.symbol];
     delete this.scaledOutMap[snapshot.symbol];
@@ -652,8 +681,11 @@ export class BotEngine {
   private buildPositionMap(positions: AlpacaPosition[]): Record<string, AlpacaPosition> {
     const map: Record<string, AlpacaPosition> = {};
     for (const position of positions) {
-      map[position.symbol] = position;
-      map[matchKey(position.symbol)] = position;
+      const qty = Number.parseFloat(position.qty);
+      if (Number.isFinite(qty) && qty > 0) {
+        map[position.symbol] = position;
+        map[matchKey(position.symbol)] = position;
+      }
     }
     return map;
   }
@@ -776,15 +808,20 @@ export class BotEngine {
       await alpacaService.cancelOrder(context.pendingBuyOrdersMap[topBearish.symbol].id);
     }
 
-    if (!context.positionMap[topBearish.symbol]) {
+    const position = context.positionMap[topBearish.symbol];
+    if (!position || Number.parseFloat(position.qty) <= 0) {
       return;
     }
 
-    const pendingSells = await alpacaService.getOrders('open', 50);
-    const hasPendingSell = pendingSells.some((order) => order.side === 'sell' && order.symbol === topBearish.symbol);
-    if (hasPendingSell) {
+    const openOrders = await alpacaService.getOrders('open', 50);
+    const hasOpenOrder = openOrders.some((order) => order.symbol === topBearish.symbol);
+    if (hasOpenOrder) {
       return;
     }
+
+    const qty = Number.parseFloat(position.qty);
+    delete context.positionMap[topBearish.symbol];
+    delete context.positionMap[matchKey(topBearish.symbol)];
 
     const reasonNote = `News Bearish (${topBearish.score.toFixed(2)}): ${topBearish.topHeadline}`;
     this.logEvent(`News bearish: selling held ${topBearish.symbol}.`, 'warning');
@@ -792,7 +829,7 @@ export class BotEngine {
     this.clearRiskState(topBearish.symbol);
     await this.executeSmartOrder(
       topBearish.symbol,
-      Math.abs(Number.parseFloat(context.positionMap[topBearish.symbol].qty)),
+      qty,
       'sell',
       reasonNote,
     );
@@ -825,6 +862,12 @@ export class BotEngine {
         // technical signal (mirrors the news-panic protection in actOnBearishNews).
         if (INDEX_ACCUMULATION_TICKERS.has(signal.symbol) || CASH_EQUIVALENT_TICKERS.has(signal.symbol)) {
           this.logEvent(`Technical sell skipped: ${signal.symbol} is a long-horizon index / cash-equivalent holding.`, 'info');
+          continue;
+        }
+        const openOrders = await alpacaService.getOrders('open', 50);
+        const hasOpenOrder = openOrders.some((order) => order.symbol === signal.symbol);
+        if (hasOpenOrder) {
+          this.logEvent(`Technical sell skipped: open order already exists for ${signal.symbol}`, 'info');
           continue;
         }
         await this.executeTechnicalSell(signal, context);
@@ -1009,12 +1052,19 @@ export class BotEngine {
   }
 
   private async executeTechnicalSell(signal: TechnicalSignal, context: StrategyContext): Promise<void> {
+    const held = context.positionMap[signal.symbol];
+    if (!held || Number.parseFloat(held.qty) <= 0) {
+      return;
+    }
+    const qtyToSell = Number.parseFloat(held.qty);
+    delete context.positionMap[signal.symbol];
+    delete context.positionMap[matchKey(signal.symbol)];
     const reasonNote = `Technical SELL (${signal.reason})`;
     this.logEvent(`Technical sell: ${signal.symbol} ${signal.reason} (confidence: ${signal.confidence})`, 'warning');
     delete this.highWaterMarkMap[signal.symbol];
     this.clearRiskState(signal.symbol);
     try {
-      await this.executeSmartOrder(signal.symbol, Math.abs(Number.parseFloat(context.positionMap[signal.symbol].qty)), 'sell', reasonNote);
+      await this.executeSmartOrder(signal.symbol, qtyToSell, 'sell', reasonNote);
     } catch {
       this.logEvent(`Technical sell skipped (position likely already closed): ${signal.symbol}`, 'warning');
     }

@@ -1,4 +1,26 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // Account Switcher State
+  let selectedAccount = localStorage.getItem('selectedAccount') || 'clean';
+  let accountsList = [];
+
+  // Intercept window.fetch to attach x-target-account header
+  const originalFetch = window.fetch;
+  window.fetch = function(input, init = {}) {
+    let url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+    if (url.startsWith('/api') && !url.startsWith('/api/accounts/summary')) {
+      init = init || {};
+      init.headers = init.headers || {};
+      if (init.headers instanceof Headers) {
+        init.headers.set('x-target-account', selectedAccount);
+      } else if (Array.isArray(init.headers)) {
+        init.headers.push(['x-target-account', selectedAccount]);
+      } else {
+        init.headers['x-target-account'] = selectedAccount;
+      }
+    }
+    return originalFetch.call(this, input, init);
+  };
+
   // Elements
   const modePaperBtn = document.getElementById('modePaperBtn');
   const modeLiveBtn = document.getElementById('modeLiveBtn');
@@ -766,9 +788,112 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Accounts Switcher Functions
+  async function fetchAccountsSummary() {
+    try {
+      const res = await originalFetch('/api/accounts/summary');
+      if (!res.ok) return;
+      accountsList = await res.json();
+      renderAccountsDropdown();
+    } catch (e) {
+      console.warn('Failed to fetch accounts summary:', e);
+    }
+  }
+
+  function renderAccountsDropdown() {
+    const listContainer = document.getElementById('accountsListContainer');
+    const currentAccount = accountsList.find(a => a.id === selectedAccount) || accountsList.find(a => a.id === 'clean') || accountsList[0];
+
+    if (currentAccount) {
+      const titleEl = document.getElementById('currentAccountTitle');
+      const subtitleEl = document.getElementById('currentAccountSubtitle');
+      if (titleEl) titleEl.textContent = currentAccount.name;
+      if (subtitleEl) subtitleEl.textContent = currentAccount.shortLabel || `Paper - ${currentAccount.accountNumber}`;
+    }
+
+    if (!listContainer || !accountsList.length) return;
+
+    listContainer.innerHTML = '';
+    accountsList.forEach(acc => {
+      const isSelected = acc.id === selectedAccount;
+      const item = document.createElement('div');
+      item.className = `account-item ${isSelected ? 'selected' : ''}`;
+      item.dataset.accountId = acc.id;
+
+      const changeSign = acc.changePct > 0 ? '+' : '';
+      const changeClass = acc.changePct < 0 ? 'negative' : (acc.changePct > 0 ? 'positive' : 'neutral');
+      const formattedEquity = `$${Number(acc.equity).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+      item.innerHTML = `
+        <div class="account-item-left">
+          <span class="account-item-name">${acc.name}</span>
+          <span class="account-item-sub">${acc.subtitle}</span>
+        </div>
+        <div class="account-item-right">
+          <span class="account-item-equity">${formattedEquity}</span>
+          <span class="account-item-change ${changeClass}">${changeSign}${acc.changePct.toFixed(2)}%</span>
+        </div>
+      `;
+
+      item.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (selectedAccount !== acc.id) {
+          selectedAccount = acc.id;
+          localStorage.setItem('selectedAccount', selectedAccount);
+          renderAccountsDropdown();
+          closeAccountDropdown();
+          showToast(`Switched account to: ${acc.name} (${acc.accountNumber})`, 'info');
+          await refreshAllData();
+        } else {
+          closeAccountDropdown();
+        }
+      });
+
+      listContainer.appendChild(item);
+    });
+  }
+
+  function toggleAccountDropdown() {
+    const menu = document.getElementById('accountDropdownMenu');
+    const trigger = document.getElementById('accountDropdownTrigger');
+    if (!menu || !trigger) return;
+
+    const isHidden = menu.classList.contains('hidden');
+    if (isHidden) {
+      menu.classList.remove('hidden');
+      trigger.setAttribute('aria-expanded', 'true');
+      void fetchAccountsSummary();
+    } else {
+      closeAccountDropdown();
+    }
+  }
+
+  function closeAccountDropdown() {
+    const menu = document.getElementById('accountDropdownMenu');
+    const trigger = document.getElementById('accountDropdownTrigger');
+    if (menu) menu.classList.add('hidden');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  document.addEventListener('click', (e) => {
+    const container = document.querySelector('.account-switcher-container');
+    if (container && !container.contains(e.target)) {
+      closeAccountDropdown();
+    }
+  });
+
+  const dropdownTrigger = document.getElementById('accountDropdownTrigger');
+  if (dropdownTrigger) {
+    dropdownTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleAccountDropdown();
+    });
+  }
+
   // Initial App Load
   async function initApp() {
     await fetchMode();
+    await fetchAccountsSummary();
     await refreshAllData();
     await refreshMarketClock();
     startMarketCountdown();
@@ -781,7 +906,8 @@ document.addEventListener('DOMContentLoaded', () => {
       refreshNewsSentiment(),
       refreshBotStatus(),
       refreshMarketClock(),
-      refreshStreamChart()
+      refreshStreamChart(),
+      fetchAccountsSummary()
     ]);
   }
 
@@ -828,12 +954,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateModeUI() {
     if (currentMode === 'live') {
-      modePaperBtn.className = 'toggle-btn';
-      modeLiveBtn.className = 'toggle-btn active-live';
+      if (modePaperBtn) modePaperBtn.className = modePaperBtn.classList.contains('tab-btn') ? 'tab-btn' : 'toggle-btn';
+      if (modeLiveBtn) modeLiveBtn.className = modeLiveBtn.classList.contains('tab-btn') ? 'tab-btn active-tab' : 'toggle-btn active-live';
       liveWarningBanner.classList.remove('hidden');
     } else {
-      modePaperBtn.className = 'toggle-btn active-paper';
-      modeLiveBtn.className = 'toggle-btn';
+      if (modePaperBtn) modePaperBtn.className = modePaperBtn.classList.contains('tab-btn') ? 'tab-btn active-tab' : 'toggle-btn active-paper';
+      if (modeLiveBtn) modeLiveBtn.className = modeLiveBtn.classList.contains('tab-btn') ? 'tab-btn' : 'toggle-btn';
       liveWarningBanner.classList.add('hidden');
     }
   }

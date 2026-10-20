@@ -3,7 +3,7 @@ import { Redis } from 'ioredis';
 
 import { Logger } from './logger.js';
 
-dotenv.config();
+dotenv.config({ path: process.env.ENV_FILE || undefined });
 
 export interface ICache {
   get<T>(key: string): Promise<T | null>;
@@ -58,7 +58,8 @@ export class CacheService implements ICache {
 
   async clearAll(): Promise<void> {
     try {
-      const keys = await this.redis.keys('trading:*');
+      const prefix = process.env.CACHE_PREFIX || 'trading';
+      const keys = await this.redis.keys(`${prefix}:*`);
       if (keys.length > 0) {
         await this.redis.del(keys);
       }
@@ -76,7 +77,8 @@ export class CacheService implements ICache {
   }
 
   private prefixed(key: string): string {
-    return `trading:${key}`;
+    const prefix = process.env.CACHE_PREFIX || 'trading';
+    return `${prefix}:${key}`;
   }
 }
 

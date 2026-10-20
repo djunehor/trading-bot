@@ -1,3 +1,4 @@
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -55,7 +56,62 @@ export class App {
 
     this.app.use(cors());
     this.app.use(express.json());
+
+    // Multi-account proxy router for /api
+    this.app.use('/api', (request: Request, response: Response, next: NextFunction) => {
+      if (request.path === '/accounts/summary') {
+        next();
+        return;
+      }
+
+      const target = (request.headers['x-target-account'] as string) || (request.query.targetAccount as string);
+      const currentPort = Number(process.env.PORT || 3000);
+
+      if (target === 'recovery' && currentPort === 3000) {
+        this.forwardRequest(3001, request, response);
+        return;
+      }
+      if (target === 'clean' && currentPort === 3001) {
+        this.forwardRequest(3000, request, response);
+        return;
+      }
+      next();
+    });
+
     this.app.use(express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), '../public')));
+  }
+
+  private forwardRequest(targetPort: number, request: Request, response: Response): void {
+    const headers = { ...request.headers };
+    headers.host = `127.0.0.1:${targetPort}`;
+    delete headers['x-target-account'];
+
+    const proxyReq = http.request(
+      {
+        hostname: '127.0.0.1',
+        port: targetPort,
+        path: request.originalUrl || request.url,
+        method: request.method,
+        headers,
+      },
+      (proxyRes) => {
+        response.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+        proxyRes.pipe(response);
+      }
+    );
+
+    proxyReq.on('error', (err) => {
+      Logger.error(`Proxy to port ${targetPort} failed: ${err.message}`);
+      response.status(502).json({ error: 'Target account server unavailable' });
+    });
+
+    if (request.body && Object.keys(request.body).length > 0) {
+      const bodyData = JSON.stringify(request.body);
+      proxyReq.setHeader('content-length', Buffer.byteLength(bodyData));
+      proxyReq.write(bodyData);
+    }
+
+    proxyReq.end();
   }
 
   private isBasicAuthValid(encoded: string, username: string, password: string): boolean {
