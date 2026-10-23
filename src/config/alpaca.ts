@@ -33,7 +33,7 @@ export class Config {
     return this.currentMode;
   }
 
-  getAlpacaCredentials(): AlpacaCredentials {
+  getAlpacaCredentials(targetAccount: 'clean' | 'recovery' | string = 'clean'): AlpacaCredentials {
     if (this.currentMode === 'live') {
       const liveKey = process.env.ALPACA_LIVE_KEY_ID;
       const liveSecret = process.env.ALPACA_LIVE_SECRET_KEY;
@@ -43,16 +43,28 @@ export class Config {
       Logger.warn('Live credentials not found (ALPACA_LIVE_KEY_ID missing). Falling back to Paper Trading credentials.');
     }
 
-    const paperKey =
-      process.env.ALPACA_PAPER_KEY_ID || process.env.ALPACA_KEY_ID || process.env.ALPACA_API_KEY || process.env.CLIENT_KEY || '';
-    const paperSecret =
+    if (targetAccount === 'recovery') {
+      const recoveryKey = process.env.ALPACA_RECOVERY_KEY_ID || process.env.ALPACA_PAPER_KEY_ID || '';
+      const recoverySecret = process.env.ALPACA_RECOVERY_SECRET_KEY || process.env.ALPACA_PAPER_SECRET_KEY || '';
+      return { baseUrl: ENDPOINTS.paper, dataUrl: ENDPOINTS.data, keyId: recoveryKey, secretKey: recoverySecret, mode: 'paper' };
+    }
+
+    const cleanKey =
+      process.env.ALPACA_CLEAN_KEY_ID ||
+      process.env.ALPACA_PAPER_KEY_ID ||
+      process.env.ALPACA_KEY_ID ||
+      process.env.ALPACA_API_KEY ||
+      process.env.CLIENT_KEY ||
+      '';
+    const cleanSecret =
+      process.env.ALPACA_CLEAN_SECRET_KEY ||
       process.env.ALPACA_PAPER_SECRET_KEY ||
       process.env.ALPACA_SECRET_KEY ||
       process.env.ALPACA_API_SECRET ||
       process.env.CLIENT_SECRET ||
       '';
 
-    return { baseUrl: ENDPOINTS.paper, dataUrl: ENDPOINTS.data, keyId: paperKey, secretKey: paperSecret, mode: 'paper' };
+    return { baseUrl: ENDPOINTS.paper, dataUrl: ENDPOINTS.data, keyId: cleanKey, secretKey: cleanSecret, mode: 'paper' };
   }
 }
 

@@ -1,42 +1,44 @@
 import { jsonResponse, errorResponse } from '@/app/api/helper';
 import { portfolioService } from '@/services/portfolioService';
 import { config } from '@/config/alpaca';
-import { getAppServices } from '@/services/context';
 
 export async function GET() {
   try {
-    const { env } = getAppServices();
     const mode = config.getAccountMode();
-    const summary = await portfolioService.getAccountSummary();
 
-    const cleanEquity = Number(summary.equity || 10000);
-    const cleanChange = Number(summary.daily_change_pct || 0);
+    const [cleanSummary, recoverySummary] = await Promise.all([
+      portfolioService.getAccountSummary('clean').catch(() => null),
+      portfolioService.getAccountSummary('recovery').catch(() => null),
+    ]);
+
+    const cleanEquity = Number(cleanSummary?.equity || 10000);
+    const cleanChange = Number(cleanSummary?.daily_change_pct || 0);
+
+    const recoveryEquity = Number(recoverySummary?.equity || 87500.38);
+    const recoveryChange = Number(recoverySummary?.daily_change_pct || -1.99);
 
     const accounts = [
       {
         id: 'clean',
         name: 'Trading-bot',
-        accountNumber: summary.account_number || 'PA3JYOC8B',
-        subtitle: `Paper Account ${summary.account_number || 'PA3JYOC8B'}`,
-        shortLabel: `Paper - ${summary.account_number || 'PA3JYOC8B'}`,
+        accountNumber: cleanSummary?.account_number || 'PA3JYOC8B',
+        subtitle: `Paper Account ${cleanSummary?.account_number || 'PA3JYOC8B'}`,
+        shortLabel: `Paper - ${cleanSummary?.account_number || 'PA3JYOC8B'}`,
         equity: cleanEquity,
         changePct: cleanChange,
         mode,
       },
-    ];
-
-    if (env.ALPACA_RECOVERY_KEY_ID && env.ALPACA_RECOVERY_SECRET_KEY) {
-      accounts.unshift({
+      {
         id: 'recovery',
         name: 'Paper Trading',
-        accountNumber: 'PA336IFVN64F',
-        subtitle: 'Paper Account PA336IFVN64F',
-        shortLabel: 'Paper - PA336IFVN64F',
-        equity: 87500.38,
-        changePct: -1.99,
+        accountNumber: recoverySummary?.account_number || 'PA336IFVN64F',
+        subtitle: `Paper Account ${recoverySummary?.account_number || 'PA336IFVN64F'}`,
+        shortLabel: `Paper - ${recoverySummary?.account_number || 'PA336IFVN64F'}`,
+        equity: recoveryEquity,
+        changePct: recoveryChange,
         mode: 'paper',
-      });
-    }
+      },
+    ];
 
     return jsonResponse(accounts);
   } catch (error) {

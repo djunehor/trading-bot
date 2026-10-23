@@ -8,6 +8,7 @@ import type { AlpacaOrder } from '@/types/alpaca';
 
 export async function GET(request: NextRequest) {
   try {
+    const targetAccount = request.headers.get('x-target-account') || 'clean';
     const searchParams = request.nextUrl.searchParams;
     const statusParameter = searchParams.get('status') || 'all';
     const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10));
@@ -15,16 +16,19 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
     const sourceString = searchParams.get('source') || 'api';
 
+    const mode = config.getAccountMode();
+    const dbMode = `${mode}_${targetAccount}`;
+
     if (sourceString === 'db') {
-      const paginated = database.getOrders(config.getAccountMode(), limit, offset);
+      const paginated = database.getOrders(dbMode, limit, offset);
       return jsonResponse({
         orders: paginated.data,
         pagination: { page, limit, total: paginated.total, totalPages: Math.ceil(paginated.total / limit) },
       });
     }
 
-    const orders = await alpacaService.getOrders(statusParameter, limit);
-    const dbReasonMap = portfolioService.buildReasonMap(database.getOrders(config.getAccountMode(), 500, 0).data);
+    const orders = await alpacaService.getOrders(statusParameter, limit, targetAccount);
+    const dbReasonMap = portfolioService.buildReasonMap(database.getOrders(dbMode, 500, 0).data);
 
     const enrichedOrders = orders.map((o: AlpacaOrder) => ({
       ...o,
@@ -43,20 +47,24 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const targetAccount = request.headers.get('x-target-account') || 'clean';
     const body = (await request.json()) as Record<string, any>;
     const { symbol, qty, side, type, limit_price, stop_price, extended_hours } = body;
     if (!symbol || !qty || !side) {
       return errorResponse(new Error('Missing required order fields: symbol, qty, side.'), 400);
     }
-    const order = await alpacaService.createOrder({
-      symbol,
-      qty: Number(qty),
-      side,
-      type,
-      limit_price: limit_price ? Number(limit_price) : undefined,
-      stop_price: stop_price ? Number(stop_price) : undefined,
-      extended_hours: Boolean(extended_hours),
-    });
+    const order = await alpacaService.createOrder(
+      {
+        symbol,
+        qty: Number(qty),
+        side,
+        type,
+        limit_price: limit_price ? Number(limit_price) : undefined,
+        stop_price: stop_price ? Number(stop_price) : undefined,
+        extended_hours: Boolean(extended_hours),
+      },
+      targetAccount,
+    );
     return jsonResponse(order);
   } catch (error) {
     return errorResponse(error);

@@ -14,8 +14,8 @@ interface CryptoSymbolSnapshot {
 export class AlpacaService {
   constructor(private readonly database: Database) {}
 
-  async fetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const creds = config.getAlpacaCredentials();
+  async fetch<T>(endpoint: string, options: RequestInit = {}, targetAccount: string = 'clean'): Promise<T> {
+    const creds = config.getAlpacaCredentials(targetAccount);
     const url = `${creds.baseUrl}${endpoint}`;
 
     const headers: Record<string, string> = {
@@ -42,16 +42,16 @@ export class AlpacaService {
     }
   }
 
-  async getAccount(): Promise<AlpacaAccount> {
+  async getAccount(targetAccount = 'clean'): Promise<AlpacaAccount> {
     const mode = config.getAccountMode();
-    const cacheKey = `account:${mode}`;
+    const cacheKey = `account:${mode}:${targetAccount}`;
 
     const cached = await cacheService.get<AlpacaAccount>(cacheKey);
     if (cached) {
       return cached;
     }
 
-    const account = await this.fetch<AlpacaAccount>('/v2/account');
+    const account = await this.fetch<AlpacaAccount>('/v2/account', {}, targetAccount);
     await cacheService.set(cacheKey, account, 10);
     return account;
   }
@@ -59,20 +59,25 @@ export class AlpacaService {
   /**
    * Alpaca's P/L basis (base_value) — the starting equity used for all-time profit/loss.
    */
-  async getPortfolioBaseValue(): Promise<number> {
-    const data = await this.fetch<{ base_value: number }>('/v2/account/portfolio/history?period=all&timeframe=1D&pnl_reset=no_reset');
+  async getPortfolioBaseValue(targetAccount = 'clean'): Promise<number> {
+    const data = await this.fetch<{ base_value: number }>(
+      '/v2/account/portfolio/history?period=all&timeframe=1D&pnl_reset=no_reset',
+      {},
+      targetAccount,
+    );
     return data.base_value;
   }
 
-  async getPositions(): Promise<AlpacaPosition[]> {
+  async getPositions(targetAccount = 'clean'): Promise<AlpacaPosition[]> {
     const mode = config.getAccountMode();
+    const dbMode = `${mode}_${targetAccount}`;
 
     // Never cache positions — current_price is used for real-time risk decisions.
-    const body = await this.fetch<unknown>('/v2/positions');
+    const body = await this.fetch<unknown>('/v2/positions', {}, targetAccount);
     const positions = Array.isArray(body) ? (body as AlpacaPosition[]) : [];
 
     try {
-      this.database.syncPositions(positions, mode);
+      this.database.syncPositions(positions, dbMode);
     } catch (error) {
       Logger.warn('Non-critical database sync warning:', error instanceof Error ? error.message : String(error));
     }
@@ -80,16 +85,17 @@ export class AlpacaService {
     return positions;
   }
 
-  async getOrders(status = 'all', limit = 50): Promise<AlpacaOrder[]> {
+  async getOrders(status = 'all', limit = 50, targetAccount = 'clean'): Promise<AlpacaOrder[]> {
     const mode = config.getAccountMode();
+    const dbMode = `${mode}_${targetAccount}`;
 
     // Orders are time-sensitive (status changes frequently) — do not cache.
-    const body = await this.fetch<unknown>(`/v2/orders?status=${status}&limit=${limit}`);
+    const body = await this.fetch<unknown>(`/v2/orders?status=${status}&limit=${limit}`, {}, targetAccount);
     const orders = Array.isArray(body) ? (body as AlpacaOrder[]) : [];
 
     try {
       for (const order of orders) {
-        this.database.saveOrder(order, mode);
+        this.database.saveOrder(order, dbMode);
       }
     } catch (error) {
       Logger.warn('Non-critical database order sync warning:', error instanceof Error ? error.message : String(error));
@@ -98,7 +104,7 @@ export class AlpacaService {
     return orders;
   }
 
-  async createOrder(parameters: CreateOrderParameters): Promise<AlpacaOrder> {
+  async createOrder(parameters: CreateOrderParameters, targetAccount = 'clean'): Promise<AlpacaOrder> {
     const {
       symbol,
       qty,
@@ -111,9 +117,10 @@ export class AlpacaService {
       extended_hours = false,
     } = parameters;
     const mode = config.getAccountMode();
+    const dbMode = `${mode}_${targetAccount}`;
 
     Logger.info(
-      `Placing order: ${side.toUpperCase()} ${notional ? `$${notional} notional` : qty} ${symbol} (${type.toUpperCase()})${extended_hours ? ' [EXTENDED HOURS]' : ''}`,
+      `[${targetAccount.toUpperCase()}] Placing order: ${side.toUpperCase()} ${notional ? `$${notional} notional` : qty} ${symbol} (${type.toUpperCase()})${extended_hours ? ' [EXTENDED HOURS]' : ''}`,
     );
 
     const payload: Record<string, unknown> = {
@@ -123,7 +130,6 @@ export class AlpacaService {
       time_in_force: time_in_force.toLowerCase(),
     };
 
-    // Use notional (dollar amount) for crypto to meet Alpaca's $10 minimum order requirement
     if (notional === undefined) {
       payload.qty = String(qty);
     } else {
@@ -141,16 +147,20 @@ export class AlpacaService {
       payload.stop_price = String(stop_price);
     }
 
-    const order = await this.fetch<AlpacaOrder>('/v2/orders', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+    const order = await this.fetch<AlpacaOrder>(
+      '/v2/orders',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      targetAccount,
+    );
 
-    Logger.success(`Order placed! ID: ${order.id}, Status: ${order.status}`);
+    Logger.success(`[${targetAccount.toUpperCase()}] Order placed! ID: ${order.id}, Status: ${order.status}`);
 
     await this.invalidateAllCaches();
     try {
-      this.database.saveOrder(order, mode, parameters.reason);
+      this.database.saveOrder(order, dbMode, parameters.reason);
     } catch (error) {
       Logger.warn('Non-critical database order save warning:', error instanceof Error ? error.message : String(error));
     }
@@ -158,19 +168,19 @@ export class AlpacaService {
     return order;
   }
 
-  async cancelOrder(orderId: string): Promise<{ id: string; success: boolean }> {
-    Logger.info(`Canceling order ID: ${orderId}...`);
-    await this.fetch<void>(`/v2/orders/${orderId}`, { method: 'DELETE' });
-    Logger.info(`Order ${orderId} canceled.`);
+  async cancelOrder(orderId: string, targetAccount = 'clean'): Promise<{ id: string; success: boolean }> {
+    Logger.info(`[${targetAccount.toUpperCase()}] Canceling order ID: ${orderId}...`);
+    await this.fetch<void>(`/v2/orders/${orderId}`, { method: 'DELETE' }, targetAccount);
+    Logger.info(`[${targetAccount.toUpperCase()}] Order ${orderId} canceled.`);
 
     await this.invalidateAllCaches();
     return { id: orderId, success: true };
   }
 
-  async closePosition(symbol: string): Promise<AlpacaOrder> {
-    Logger.info(`Closing position for symbol: ${symbol}...`);
-    const order = await this.fetch<AlpacaOrder>(`/v2/positions/${symbol}`, { method: 'DELETE' });
-    Logger.info(`Position closed for ${symbol}.`);
+  async closePosition(symbol: string, targetAccount = 'clean'): Promise<AlpacaOrder> {
+    Logger.info(`[${targetAccount.toUpperCase()}] Closing position for symbol: ${symbol}...`);
+    const order = await this.fetch<AlpacaOrder>(`/v2/positions/${symbol}`, { method: 'DELETE' }, targetAccount);
+    Logger.info(`[${targetAccount.toUpperCase()}] Position closed for ${symbol}.`);
 
     await this.invalidateAllCaches();
     return order;

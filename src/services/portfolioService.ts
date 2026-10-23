@@ -249,12 +249,12 @@ export class PortfolioService {
     return Number.parseFloat(account.equity) - this.sumUnrealizedPl(positions);
   }
 
-  async getAccountSummary(): Promise<Record<string, unknown>> {
+  async getAccountSummary(targetAccount = 'clean'): Promise<Record<string, unknown>> {
     const [account, positions, closedOrders, baseValue] = await Promise.all([
-      this.alpaca.getAccount(),
-      this.alpaca.getPositions(),
-      this.alpaca.getOrders('closed', 500),
-      this.alpaca.getPortfolioBaseValue(),
+      this.alpaca.getAccount(targetAccount),
+      this.alpaca.getPositions(targetAccount),
+      this.alpaca.getOrders('closed', 500, targetAccount),
+      this.alpaca.getPortfolioBaseValue(targetAccount),
     ]);
 
     const stockPositions = positions.filter((p) => p.asset_class === 'us_equity');
@@ -271,11 +271,12 @@ export class PortfolioService {
 
     const equity = Number.parseFloat(account.equity);
     const mode = config.getAccountMode();
+    const dbMode = `${mode}_${targetAccount}`;
     const lastEquity = Number.parseFloat(account.last_equity || '0');
     const dailyChange = equity - lastEquity;
     const allTimePl = equity - baseValue;
 
-    const mergedOrders = this.mergeOrders(closedOrders, this.database.getOrders(mode, 1000, 0).data);
+    const mergedOrders = this.mergeOrders(closedOrders, this.database.getOrders(dbMode, 1000, 0).data);
 
     const stockRealizedPl = this.calculateRealizedPl('us_equity', mergedOrders);
     const cryptoRealizedPl = this.calculateRealizedPl('crypto', mergedOrders);
@@ -318,21 +319,22 @@ export class PortfolioService {
     };
   }
 
-  async recordEquitySnapshot(): Promise<void> {
+  async recordEquitySnapshot(targetAccount = 'clean'): Promise<void> {
     try {
-      const account = await this.alpaca.getAccount();
-      const positions = await this.alpaca.getPositions();
+      const account = await this.alpaca.getAccount(targetAccount);
+      const positions = await this.alpaca.getPositions(targetAccount);
       const equity = Number.parseFloat(account.equity);
-      const baseValue = await this.alpaca.getPortfolioBaseValue();
+      const baseValue = await this.alpaca.getPortfolioBaseValue(targetAccount);
       const pl = equity - baseValue;
       const posList = positions.map((p) => ({
         symbol: p.symbol,
         pl: Number.parseFloat(p.unrealized_pl || '0'),
         mv: Number.parseFloat(p.market_value || '0'),
       }));
-      this.database.saveEquitySnapshot(equity, pl, posList, config.getAccountMode());
+      const mode = config.getAccountMode();
+      this.database.saveEquitySnapshot(equity, pl, posList, `${mode}_${targetAccount}`);
     } catch {
-      Logger.warn('Failed to record equity snapshot.');
+      Logger.warn(`Failed to record equity snapshot for ${targetAccount}.`);
     }
   }
 }
