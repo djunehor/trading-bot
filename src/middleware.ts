@@ -36,7 +36,12 @@ export function middleware(request: NextRequest) {
   }
 
   if (!authUsername || !authPassword) {
-    return NextResponse.next();
+    return new NextResponse('Unauthorized: Trading platform is locked. AUTH_USERNAME and AUTH_PASSWORD must be set.', {
+      status: 401,
+      headers: {
+        'WWW-Authenticate': 'Basic realm="trading-bot"',
+      },
+    });
   }
 
   const authHeader = request.headers.get('authorization') || '';
