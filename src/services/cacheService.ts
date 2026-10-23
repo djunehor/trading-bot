@@ -1,9 +1,4 @@
-import dotenv from 'dotenv';
-import { Redis } from 'ioredis';
-
 import { Logger } from './logger.js';
-
-dotenv.config({ path: process.env.ENV_FILE || undefined });
 
 export interface ICache {
   get<T>(key: string): Promise<T | null>;
@@ -12,74 +7,101 @@ export interface ICache {
   clearAll(): Promise<void>;
 }
 
+interface MemoryCacheEntry {
+  value: string;
+  expiresAt: number;
+}
+
 export class CacheService implements ICache {
-  private readonly redis: Redis;
+  private readonly memoryCache = new Map<string, MemoryCacheEntry>();
+  private readonly prefix: string;
 
-  constructor(options: { url?: string } = {}) {
-    const url = options.url || process.env.REDIS_URL || 'redis://127.0.0.1:6379';
-    this.redis = new Redis(url, {
-      maxRetriesPerRequest: 3,
-      connectTimeout: 5000,
-      retryStrategy(times: number) {
-        if (times > 3) {
-          return null;
-        } // stop retrying
-        return Math.min(times * 500, 3000);
-      },
-    });
+  constructor(options: { prefix?: string } = {}) {
+    this.prefix = options.prefix || process.env.CACHE_PREFIX || 'trading';
+  }
 
-    this.redis.on('error', () => {});
+  private getKV(): any | null {
+    try {
+      const { getCloudflareContext } = require('@opennextjs/cloudflare');
+      const ctx = getCloudflareContext();
+      return ctx?.env?.TRADING_KV || null;
+    } catch {
+      return null;
+    }
   }
 
   async get<T>(key: string): Promise<T | null> {
+    const fullKey = `${this.prefix}:${key}`;
+    const kv = this.getKV();
+    if (kv) {
+      try {
+        return await kv.get(fullKey, 'json');
+      } catch {
+        return null;
+      }
+    }
+
+    const entry = this.memoryCache.get(fullKey);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+      this.memoryCache.delete(fullKey);
+      return null;
+    }
     try {
-      const value = await this.redis.get(this.prefixed(key));
-      return value ? (JSON.parse(value) as T) : null;
+      return JSON.parse(entry.value) as T;
     } catch {
       return null;
     }
   }
 
   async set<T>(key: string, value: T, ttlSeconds = 60): Promise<void> {
-    try {
-      await this.redis.set(this.prefixed(key), JSON.stringify(value), 'EX', ttlSeconds);
-    } catch {
-      Logger.warn(`Cache set failed for key "${key}".`);
+    const fullKey = `${this.prefix}:${key}`;
+    const kv = this.getKV();
+    if (kv) {
+      try {
+        const expirationTtl = Math.max(60, Math.floor(ttlSeconds));
+        await kv.put(fullKey, JSON.stringify(value), { expirationTtl });
+        return;
+      } catch (err) {
+        Logger.warn(`KV Cache set failed for key "${key}": ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
+
+    this.memoryCache.set(fullKey, {
+      value: JSON.stringify(value),
+      expiresAt: Date.now() + Math.max(1, ttlSeconds) * 1000,
+    });
   }
 
   async remove(key: string): Promise<void> {
-    try {
-      await this.redis.del(this.prefixed(key));
-    } catch {
-      Logger.warn(`Cache remove failed for key "${key}".`);
+    const fullKey = `${this.prefix}:${key}`;
+    const kv = this.getKV();
+    if (kv) {
+      try {
+        await kv.delete(fullKey);
+      } catch (err) {
+        Logger.warn(`KV Cache remove failed for key "${key}": ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
+    this.memoryCache.delete(fullKey);
   }
 
   async clearAll(): Promise<void> {
-    try {
-      const prefix = process.env.CACHE_PREFIX || 'trading';
-      const keys = await this.redis.keys(`${prefix}:*`);
-      if (keys.length > 0) {
-        await this.redis.del(keys);
+    const kv = this.getKV();
+    if (kv) {
+      try {
+        const list = await kv.list({ prefix: `${this.prefix}:` });
+        for (const k of list.keys) {
+          await kv.delete(k.name);
+        }
+      } catch (err) {
+        Logger.warn(`KV Cache clearAll failed: ${err instanceof Error ? err.message : String(err)}`);
       }
-    } catch {
-      Logger.warn('Cache clearAll failed.');
     }
+    this.memoryCache.clear();
   }
 
-  async close(): Promise<void> {
-    await this.redis.quit();
-  }
-
-  isRedisActive(): boolean {
-    return this.redis.status === 'ready';
-  }
-
-  private prefixed(key: string): string {
-    const prefix = process.env.CACHE_PREFIX || 'trading';
-    return `${prefix}:${key}`;
-  }
+  async close(): Promise<void> {}
 }
 
 export const cacheService = new CacheService();

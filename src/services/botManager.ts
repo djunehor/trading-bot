@@ -5,12 +5,38 @@ import type { BotConfig, BotStatus, TradeSignal } from '../types/alpaca.js';
 import { ACTIVE_TRADE_CASH_PCT, DEFAULT_CRYPTO_CONFIG, DEFAULT_STOCK_CONFIG, RISK_BUDGET_PER_TRADE } from './botConfig.js';
 import { BotEngine } from './tradingBot.js';
 
-export const stockBot = new BotEngine('us_equity', DEFAULT_STOCK_CONFIG, database);
-export const cryptoBot = new BotEngine('crypto', DEFAULT_CRYPTO_CONFIG, database);
+let _stockBot: BotEngine | null = null;
+let _cryptoBot: BotEngine | null = null;
+
+export function getStockBot(): BotEngine {
+  if (!_stockBot) {
+    _stockBot = new BotEngine('us_equity', DEFAULT_STOCK_CONFIG, database);
+  }
+  return _stockBot;
+}
+
+export function getCryptoBot(): BotEngine {
+  if (!_cryptoBot) {
+    _cryptoBot = new BotEngine('crypto', DEFAULT_CRYPTO_CONFIG, database);
+  }
+  return _cryptoBot;
+}
+
+export const stockBot = new Proxy({} as BotEngine, {
+  get(_target, prop) {
+    return (getStockBot() as any)[prop];
+  },
+});
+
+export const cryptoBot = new Proxy({} as BotEngine, {
+  get(_target, prop) {
+    return (getCryptoBot() as any)[prop];
+  },
+});
 
 export class BotManager {
   static getInstance(assetClass: 'crypto' | 'us_equity' = 'us_equity'): BotEngine {
-    return assetClass === 'crypto' ? cryptoBot : stockBot;
+    return assetClass === 'crypto' ? getCryptoBot() : getStockBot();
   }
 
   static start(botConfig: Partial<BotConfig> = {}, startingEquity?: number): BotStatus {

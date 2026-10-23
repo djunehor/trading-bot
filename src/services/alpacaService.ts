@@ -421,7 +421,7 @@ export class AlpacaService {
     }
   }
 
-  private async invalidateAllCaches(): Promise<void> {
+  public async invalidateAllCaches(): Promise<void> {
     const mode = config.getAccountMode();
     await cacheService.remove(`positions:${mode}`);
     await cacheService.remove(`account:${mode}`);

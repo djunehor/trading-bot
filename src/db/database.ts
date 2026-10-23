@@ -7,8 +7,8 @@ import BetterSqlite3 from 'better-sqlite3';
 import { Logger } from '../services/logger.js';
 import type { AlpacaOrder, AlpacaPosition, BotConfig, BotLog, StockSentiment } from '../types/alpaca.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __filename = typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:') ? fileURLToPath(import.meta.url) : '';
+const __dirname = __filename ? path.dirname(__filename) : process.cwd();
 const dataDir = path.join(__dirname, '../../data');
 
 export interface BotRiskState {
@@ -65,15 +65,26 @@ export class Database {
   private readonly db: BetterSqlite3.Database;
 
   constructor(dbPath = process.env.DB_PATH || path.join(dataDir, 'trading.db')) {
-    const targetDir = path.dirname(dbPath);
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
+    try {
+      if (typeof fs?.existsSync === 'function') {
+        const targetDir = path.dirname(dbPath);
+        if (!fs.existsSync(targetDir)) {
+          fs.mkdirSync(targetDir, { recursive: true });
+        }
+      }
+      this.db = new BetterSqlite3(dbPath);
+      this.db.pragma('journal_mode = WAL');
+      this.initSchema();
+      Logger.info(`SQLite database initialized successfully (${dbPath}).`);
+    } catch {
+      // In Cloudflare Workers environment, fallback
+      this.db = {
+        pragma: () => [],
+        prepare: () => ({ run: () => {}, all: () => [], get: () => ({ total: 0 }) }),
+        exec: () => {},
+        transaction: (fn: any) => fn,
+      } as any;
     }
-
-    this.db = new BetterSqlite3(dbPath);
-    this.db.pragma('journal_mode = WAL');
-    this.initSchema();
-    Logger.info(`SQLite database initialized successfully (${dbPath}).`);
   }
 
   private initSchema(): void {

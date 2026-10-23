@@ -12,6 +12,11 @@ data/
 *.db
 *.db-journal
 
+# Next.js & Cloudflare
+.next/
+.open-next/
+.wrangler/
+
 # TypeScript Build Output
 dist/
 
