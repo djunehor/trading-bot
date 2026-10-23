@@ -18,7 +18,7 @@
     {
       "binding": "DB",
       "database_name": "trading_db",
-      "database_id": "trading_db",
+      "database_id": "e04fa787-ef8a-47ac-ac82-9498489e2378",
       "migrations_dir": "migrations"
     }
   ],
