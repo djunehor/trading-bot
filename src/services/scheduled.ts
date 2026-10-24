@@ -6,19 +6,18 @@ import { BotEngine } from './tradingBot.js';
 import { DEFAULT_CRYPTO_CONFIG, DEFAULT_STOCK_CONFIG } from './botConfig.js';
 import type { CloudflareEnv } from '../types/cloudflare.js';
 
+let isTickRunning = false;
+
 export async function runScheduledTick(env: CloudflareEnv): Promise<void> {
-  const { db, cache } = getAppServices(env);
-  const lockKey = 'cron:tick_lock';
+  if (isTickRunning) {
+    Logger.warn('[Cron] Scheduled tick skipped: prior tick still in flight.');
+    return;
+  }
+  isTickRunning = true;
+
+  const { db } = getAppServices(env);
 
   try {
-    const isLocked = await cache.get<string>(lockKey);
-    if (isLocked) {
-      Logger.warn('[Cron] Scheduled tick skipped: prior tick still in flight.');
-      return;
-    }
-    // Lock for 50 seconds (cron fires every 60s)
-    await cache.set(lockKey, '1', 50);
-
     const accountsToProcess: Array<{ mode: 'paper' | 'live'; targetAccount?: 'clean' | 'recovery' }> = [];
 
     // Check account configuration
@@ -70,10 +69,6 @@ export async function runScheduledTick(env: CloudflareEnv): Promise<void> {
   } catch (error) {
     Logger.error(`[Cron] Scheduled tick error: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
-    try {
-      await cache.remove(lockKey);
-    } catch {
-      // Ignore cache release error
-    }
+    isTickRunning = false;
   }
 }

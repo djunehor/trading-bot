@@ -360,4 +360,47 @@ export class D1DatabaseService {
       positions: JSON.parse(row.positions_json || '[]'),
     }));
   }
+
+  async acquireLock(name: string, ttlSeconds = 50): Promise<boolean> {
+    const now = Date.now();
+    const expiresAt = now + ttlSeconds * 1000;
+    try {
+      const res = await this.d1
+        .prepare(`
+          INSERT INTO cron_locks (name, expires_at)
+          VALUES (?, ?)
+          ON CONFLICT(name) DO UPDATE SET
+            expires_at = excluded.expires_at
+          WHERE cron_locks.expires_at < ?
+        `)
+        .bind(name, expiresAt, now)
+        .run();
+      return (res.meta?.changes ?? 0) > 0;
+    } catch {
+      try {
+        await this.d1.prepare(`CREATE TABLE IF NOT EXISTS cron_locks (name TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)`).run();
+        const res = await this.d1
+          .prepare(`
+            INSERT INTO cron_locks (name, expires_at)
+            VALUES (?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+              expires_at = excluded.expires_at
+            WHERE cron_locks.expires_at < ?
+          `)
+          .bind(name, expiresAt, now)
+          .run();
+        return (res.meta?.changes ?? 0) > 0;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  async releaseLock(name: string): Promise<void> {
+    try {
+      await this.d1.prepare(`DELETE FROM cron_locks WHERE name = ?`).bind(name).run();
+    } catch {
+      // Ignore release error
+    }
+  }
 }

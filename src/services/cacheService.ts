@@ -30,51 +30,78 @@ export class CacheService implements ICache {
     }
   }
 
+  isRedisActive(): boolean {
+    return false;
+  }
+
   async get<T>(key: string): Promise<T | null> {
     const fullKey = `${this.prefix}:${key}`;
+
+    // L1: Check in-memory cache first to avoid unnecessary KV reads
+    const entry = this.memoryCache.get(fullKey);
+    if (entry) {
+      if (Date.now() <= entry.expiresAt) {
+        try {
+          return JSON.parse(entry.value) as T;
+        } catch {
+          // parse failed, fall through to KV
+        }
+      } else {
+        this.memoryCache.delete(fullKey);
+      }
+    }
+
+    // L2: Fallback to Cloudflare KV if available
     const kv = this.getKV();
     if (kv) {
       try {
-        return await kv.get(fullKey, 'json');
+        const val = await kv.get(fullKey, 'json');
+        if (val !== null) {
+          this.memoryCache.set(fullKey, {
+            value: JSON.stringify(val),
+            expiresAt: Date.now() + 60_000,
+          });
+        }
+        return val as T;
       } catch {
         return null;
       }
     }
 
-    const entry = this.memoryCache.get(fullKey);
-    if (!entry) return null;
-    if (Date.now() > entry.expiresAt) {
-      this.memoryCache.delete(fullKey);
-      return null;
-    }
-    try {
-      return JSON.parse(entry.value) as T;
-    } catch {
-      return null;
-    }
+    return null;
   }
 
   async set<T>(key: string, value: T, ttlSeconds = 60): Promise<void> {
     const fullKey = `${this.prefix}:${key}`;
+    const serialized = JSON.stringify(value);
+
+    // Always populate L1 memory cache
+    this.memoryCache.set(fullKey, {
+      value: serialized,
+      expiresAt: Date.now() + Math.max(0.001, ttlSeconds) * 1000,
+    });
+
+    // Cloudflare KV requires minimum expirationTtl of 60 seconds and free tier has strict write limits (1,000/day).
+    // Ephemeral / short-lived items (< 60s) should stay purely in-memory.
+    if (ttlSeconds < 60) {
+      return;
+    }
+
     const kv = this.getKV();
     if (kv) {
       try {
         const expirationTtl = Math.max(60, Math.floor(ttlSeconds));
-        await kv.put(fullKey, JSON.stringify(value), { expirationTtl });
-        return;
+        await kv.put(fullKey, serialized, { expirationTtl });
       } catch (err) {
         Logger.warn(`KV Cache set failed for key "${key}": ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-
-    this.memoryCache.set(fullKey, {
-      value: JSON.stringify(value),
-      expiresAt: Date.now() + Math.max(1, ttlSeconds) * 1000,
-    });
   }
 
   async remove(key: string): Promise<void> {
     const fullKey = `${this.prefix}:${key}`;
+    this.memoryCache.delete(fullKey);
+
     const kv = this.getKV();
     if (kv) {
       try {
@@ -83,10 +110,11 @@ export class CacheService implements ICache {
         Logger.warn(`KV Cache remove failed for key "${key}": ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    this.memoryCache.delete(fullKey);
   }
 
   async clearAll(): Promise<void> {
+    this.memoryCache.clear();
+
     const kv = this.getKV();
     if (kv) {
       try {
@@ -98,7 +126,6 @@ export class CacheService implements ICache {
         Logger.warn(`KV Cache clearAll failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    this.memoryCache.clear();
   }
 
   async close(): Promise<void> {}

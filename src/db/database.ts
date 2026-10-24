@@ -187,6 +187,11 @@ export class Database {
       );
 
       CREATE INDEX IF NOT EXISTS idx_equity_snapshots_time ON equity_snapshots(time DESC);
+
+      CREATE TABLE IF NOT EXISTS cron_locks (
+        name TEXT PRIMARY KEY,
+        expires_at INTEGER NOT NULL
+      );
     `);
 
     this.migrate();
@@ -541,6 +546,45 @@ export class Database {
       pl: row.pl,
       positions: JSON.parse(row.positions_json || '[]'),
     }));
+  }
+
+  acquireLock(name: string, ttlSeconds = 50): boolean {
+    const now = Date.now();
+    const expiresAt = now + ttlSeconds * 1000;
+    try {
+      const stmt = this.db.prepare(`
+        INSERT INTO cron_locks (name, expires_at)
+        VALUES (?, ?)
+        ON CONFLICT(name) DO UPDATE SET
+          expires_at = excluded.expires_at
+        WHERE cron_locks.expires_at < ?
+      `);
+      const info = stmt.run(name, expiresAt, now);
+      return (info?.changes ?? 0) > 0;
+    } catch {
+      try {
+        this.db.exec(`CREATE TABLE IF NOT EXISTS cron_locks (name TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);`);
+        const stmt = this.db.prepare(`
+          INSERT INTO cron_locks (name, expires_at)
+          VALUES (?, ?)
+          ON CONFLICT(name) DO UPDATE SET
+            expires_at = excluded.expires_at
+          WHERE cron_locks.expires_at < ?
+        `);
+        const info = stmt.run(name, expiresAt, now);
+        return (info?.changes ?? 0) > 0;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  releaseLock(name: string): void {
+    try {
+      this.db.prepare(`DELETE FROM cron_locks WHERE name = ?`).run(name);
+    } catch {
+      // Ignore release error
+    }
   }
 }
 
