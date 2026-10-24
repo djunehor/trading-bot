@@ -9,15 +9,26 @@ import type { CloudflareEnv } from '../types/cloudflare.js';
 let isTickRunning = false;
 
 export async function runScheduledTick(env: CloudflareEnv): Promise<void> {
+  // Fast path: skip if current isolate is already running a tick
   if (isTickRunning) {
-    Logger.warn('[Cron] Scheduled tick skipped: prior tick still in flight.');
+    Logger.warn('[Cron] Scheduled tick skipped: prior tick still in flight (isolate).');
     return;
   }
-  isTickRunning = true;
 
   const { db } = getAppServices(env);
+  const lockKey = 'cron:tick_lock';
+
+  // Distributed lock in D1 (50s TTL) to prevent overlapping cron execution across isolates
+  let lockAcquired = false;
+  isTickRunning = true;
 
   try {
+    lockAcquired = await db.acquireLock(lockKey, 50);
+    if (!lockAcquired) {
+      Logger.warn('[Cron] Scheduled tick skipped: prior tick still in flight (db).');
+      return;
+    }
+
     const accountsToProcess: Array<{ mode: 'paper' | 'live'; targetAccount?: 'clean' | 'recovery' }> = [];
 
     // Check account configuration
@@ -70,5 +81,12 @@ export async function runScheduledTick(env: CloudflareEnv): Promise<void> {
     Logger.error(`[Cron] Scheduled tick error: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
     isTickRunning = false;
+    if (lockAcquired) {
+      try {
+        await db.releaseLock(lockKey);
+      } catch {
+        // Ignore lock release error
+      }
+    }
   }
 }
