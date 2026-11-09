@@ -6,9 +6,13 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const getHtmlPath = () =>
+  fs.existsSync(path.join(__dirname, '../public/index.html'))
+    ? path.join(__dirname, '../public/index.html')
+    : path.join(__dirname, '../legacy-ui/index.html');
 
 test('UI TypeScript - Verify index.html contains essential dashboard elements', () => {
-  const htmlPath = path.join(__dirname, '../public/index.html');
+  const htmlPath = getHtmlPath();
   const htmlContent = fs.readFileSync(htmlPath, 'utf8');
 
   // Verify Account Switcher Buttons
@@ -43,7 +47,7 @@ test('UI TypeScript - Verify CSS styling rules for responsive design & mode colo
 test('UI TypeScript - Verify stream chart container & scrollable legend styling', () => {
   const cssPath = path.join(__dirname, '../public/styles.css');
   const cssContent = fs.readFileSync(cssPath, 'utf8');
-  const htmlPath = path.join(__dirname, '../public/index.html');
+  const htmlPath = getHtmlPath();
   const htmlContent = fs.readFileSync(htmlPath, 'utf8');
   const jsPath = path.join(__dirname, '../public/app.js');
   const jsContent = fs.readFileSync(jsPath, 'utf8');
@@ -77,7 +81,7 @@ test('UI TypeScript - Verify Manual Order card grid alignment with Bot cards', (
 test('UI TypeScript - Verify Portfolio Allocation card has full width', () => {
   const cssPath = path.join(__dirname, '../public/styles.css');
   const cssContent = fs.readFileSync(cssPath, 'utf8');
-  const htmlPath = path.join(__dirname, '../public/index.html');
+  const htmlPath = getHtmlPath();
   const htmlContent = fs.readFileSync(htmlPath, 'utf8');
 
   assert.ok(cssContent.includes('.allocation-card,'), 'allocation-card full width in CSS');
@@ -105,7 +109,7 @@ test('UI TypeScript - Verify full mobile responsiveness and SVG chart scaling', 
 });
 
 test('UI TypeScript - Verify Market Clock elements and countdown renderers', () => {
-  const htmlPath = path.join(__dirname, '../public/index.html');
+  const htmlPath = getHtmlPath();
   const htmlContent = fs.readFileSync(htmlPath, 'utf8');
   const jsPath = path.join(__dirname, '../public/app.js');
   const jsContent = fs.readFileSync(jsPath, 'utf8');
@@ -121,7 +125,7 @@ test('UI TypeScript - Verify Market Clock elements and countdown renderers', () 
 });
 
 test('UI TypeScript - Verify Strategy Backtest elements and configurable controls', () => {
-  const htmlPath = path.join(__dirname, '../public/index.html');
+  const htmlPath = getHtmlPath();
   const htmlContent = fs.readFileSync(htmlPath, 'utf8');
   const jsPath = path.join(__dirname, '../public/app.js');
   const jsContent = fs.readFileSync(jsPath, 'utf8');

@@ -6,6 +6,8 @@ import { app } from '../src/server.js';
 import { cacheService } from '../src/services/cacheService.js';
 
 process.env.NODE_ENV = 'test';
+delete process.env.AUTH_USERNAME;
+delete process.env.AUTH_PASSWORD;
 
 let server: Server;
 let port: number;
